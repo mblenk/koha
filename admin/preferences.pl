@@ -28,7 +28,6 @@ use C4::ClassSource qw( GetClassSources GetClassSource );
 use C4::Output      qw( output_html_with_http_headers output_and_exit_if_error );
 use C4::Templates;
 use Koha::Acquisition::Currencies;
-use Koha::SearchEngine::Embedder;
 use Koha::Database::Columns;
 use Koha::ILL::Request::Config;
 use IO::File;
@@ -155,8 +154,6 @@ sub _get_chunk {
                             Koha::AuthorisedValues->search( { category => $options{'source'} } )->as_list };
                     $add_blank = 1;
                 }
-            } elsif ( $options{'choices'} eq 'vector-providers' ) {
-                $options{'choices'} = Koha::SearchEngine::Embedder->providers();
             } else {
                 die 'Unrecognized source of preference values: ' . $options{'choices'};
             }

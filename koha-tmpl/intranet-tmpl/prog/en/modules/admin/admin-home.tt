@@ -209,6 +209,10 @@
                         <dt><a href="/cgi-bin/koha/admin/record_sources">Record sources</a></dt>
                         <dd>Define record sources to import from</dd>
                     [% END %]
+                    [% IF ( Koha.Preference('VectorSearchEnabled') && CAN_user_parameters_manage_sysprefs ) %]
+                        <dt><a href="/cgi-bin/koha/admin/embedding_providers">Embedding providers</a></dt>
+                        <dd>Configure embedding providers for vector/semantic search</dd>
+                    [% END %]
                     [% IF ( CAN_user_parameters_manage_marc_overlay_rules ) %]
                         <dt><a href="/cgi-bin/koha/admin/marc-overlay-rules.pl">Record overlay rules</a></dt>
                         <dd>Managed rules for automatic overlay of MARC fields during record imports and updates</dd>

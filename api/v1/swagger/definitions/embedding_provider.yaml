@@ -1,0 +1,52 @@
+---
+type: object
+properties:
+  embedding_provider_id:
+    type: integer
+    description: Internally assigned embedding provider identifier
+    readOnly: true
+  name:
+    description: Admin-given label for this provider configuration
+    type: string
+  url:
+    description: Full endpoint URL for the embedding API
+    type: string
+  model:
+    description: Model name substituted as {{model}} in the request body template
+    type: string
+  api_key:
+    description: Bearer token for authentication
+    type:
+      - string
+      - "null"
+  auth_type:
+    description: Whether to send an Authorization header
+    type: string
+    enum:
+      - none
+      - bearer
+  request_body_template:
+    description: JSON body template with {{text}} and {{model}} as sentinel string values
+    type: string
+  response_key:
+    description: Dot-notation path to the embedding array in the response (e.g. data.0.embedding)
+    type: string
+  dimensions:
+    description: Vector dimensionality
+    type: integer
+  status:
+    description: Only one provider may be active at a time
+    type: string
+    enum:
+      - active
+      - inactive
+additionalProperties: false
+required:
+  - name
+  - url
+  - model
+  - auth_type
+  - request_body_template
+  - response_key
+  - dimensions
+  - status

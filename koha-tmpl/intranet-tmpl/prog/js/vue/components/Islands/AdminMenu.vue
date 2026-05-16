@@ -306,6 +306,18 @@
                         >{{ $__("Record sources") }}</a
                     >
                 </li>
+                <li
+                    v-if="
+                        vectorsearchenabled &&
+                        can_user_parameters_manage_sysprefs
+                    "
+                >
+                    <a
+                        :ref="el => templateRefs.push(el)"
+                        href="/cgi-bin/koha/admin/embedding_providers"
+                        >{{ $__("Embedding providers") }}</a
+                    >
+                </li>
                 <li v-if="can_user_parameters_manage_marc_overlay_rules">
                     <a
                         :ref="el => templateRefs.push(el)"
@@ -610,6 +622,7 @@ export default {
         smssenddriver: String,
         enableadvancedcatalogingeditor: Number,
         illmodule: Number,
+        vectorsearchenabled: Number,
     },
     setup() {
         const templateRefs = ref([]);

@@ -9,11 +9,7 @@ return {
         my ( $dbh, $out ) = @$args{qw(dbh out)};
 
         for my $pref (
-            [ 'VectorSearchEnabled',    '0'                      ],
-            [ 'VectorSearchProvider',   ''                 ],
-            [ 'VectorSearchModel',      ''       ],
-            [ 'VectorSearchAPIKey',     ''                       ],
-            [ 'VectorSearchDimensions', '768'                    ],
+            [ 'VectorSearchEnabled', '0' ],
             )
         {
             $dbh->do(

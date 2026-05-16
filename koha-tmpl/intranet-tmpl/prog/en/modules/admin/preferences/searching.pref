@@ -418,21 +418,4 @@ Searching:
               choices:
                   1: Enable
                   0: "Don't enable"
-            - "vector/semantic search (requires Elasticsearch 8.x). Changing this setting requires recreating the ES index with rebuild_elasticsearch.pl."
-        -
-            - pref: VectorSearchProvider
-              choices: vector-providers
-            - "as the embedding provider."
-        -
-            - "Embedding model"
-            - pref: VectorSearchModel
-              class: long
-        -
-            - "API key (leave empty for Ollama)"
-            - pref: VectorSearchAPIKey
-              class: password
-        -
-            - "Vector dimensions"
-            - pref: VectorSearchDimensions
-              class: short
-            - "(768 for nomic-embed-text, 1536 for text-embedding-3-small)."
+            - 'vector/semantic search (requires Elasticsearch 8.x). Changing this setting requires recreating the ES index with rebuild_elasticsearch.pl. Configure providers at <a href="/cgi-bin/koha/admin/embedding_providers">Admin &rsaquo; Embedding providers</a>.'

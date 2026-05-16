@@ -19,7 +19,7 @@ package Koha::SearchEngine::Embedder;
 
 =head1 NAME
 
-Koha::SearchEngine::Embedder - provider-agnostic text embedding client
+Koha::SearchEngine::Embedder - data-driven text embedding client
 
 =head1 SYNOPSIS
 
@@ -34,23 +34,8 @@ Koha::SearchEngine::Embedder - provider-agnostic text embedding client
 =head1 DESCRIPTION
 
 Sends text to an embedding API and returns a dense vector (arrayref of floats).
-The provider is selected via the C<VectorSearchProvider> system preference.
-
-Built-in providers:
-
-=over 4
-
-=item C<ollama> — Ollama local API (POST /api/embeddings)
-
-=item C<openai> — OpenAI-compatible API (POST /v1/embeddings)
-
-=item C<voyage> — Voyage AI / Anthropic (POST /v1/embeddings, array input)
-
-=item C<cohere> — Cohere API (POST /v1/embed, array input)
-
-=back
-
-New providers can be added by inserting an entry into C<%PROVIDER_CONFIG>.
+All configuration — endpoint URL, model, auth, request/response format — is
+read from the active row in the C<embedding_providers> table.
 
 Returns C<undef> silently on any failure so callers can degrade gracefully.
 
@@ -64,87 +49,63 @@ use Try::Tiny qw( catch try );
 use LWP::UserAgent;
 use HTTP::Request;
 use JSON qw( decode_json encode_json );
-use C4::Context;
 use Koha::Biblios;
+use Koha::EmbeddingProviders;
 
 use constant MAX_TEXT_LENGTH => 2000;
 use constant LWP_TIMEOUT     => 30;
-
-my $PROVIDER_CONFIG = {
-    ollama => {
-        label       => 'Ollama (local)',
-        url         => 'http://localhost:11434/api/embeddings',
-        auth        => 'none',
-        build_input => sub { ( prompt => $_[0] ) },
-        extract     => sub { $_[0]->{embedding} },
-    },
-    openai => {
-        label       => 'OpenAI-compatible API',
-        url         => 'https://api.openai.com/v1/embeddings',
-        auth        => 'bearer',
-        build_input => sub { ( input => $_[0] ) },
-        extract     => sub { $_[0]->{data}[0]{embedding} },
-    },
-    voyage => {
-        label       => 'Voyage AI (Anthropic)',
-        url         => 'https://api.voyageai.com/v1/embeddings',
-        auth        => 'bearer',
-        build_input => sub { ( input => [ $_[0] ] ) },
-        extract     => sub { $_[0]->{data}[0]{embedding} },
-    },
-    cohere => {
-        label       => 'Cohere',
-        url         => 'https://api.cohere.ai/v1/embed',
-        auth        => 'bearer',
-        build_input => sub { ( texts => [ $_[0] ] ) },
-        extract     => sub { $_[0]->{embeddings}[0] },
-    },
-};
-
-=head2 providers
-
-    my $providers = Koha::SearchEngine::Embedder->providers();
-
-Returns a hashref of C<< { provider_key => display_label } >> for all built-in
-providers. Used to populate the C<VectorSearchProvider> system preference dropdown.
-
-=cut
-
-sub providers {
-    return { map { $_ => $PROVIDER_CONFIG->{$_}{label} } keys %{$PROVIDER_CONFIG} };
-}
 
 =head2 new
 
     my $embedder = Koha::SearchEngine::Embedder->new( %args );
 
-Constructor. C<provider> and C<model> are required — they must be supplied either
-as named arguments or via the corresponding system preferences. Dies if either is
-missing or empty. C<api_key> is optional (leave unset for Ollama). The endpoint
-URL is determined by the provider and lives in C<$PROVIDER_CONFIG>.
+Constructor. In production, reads all configuration from the active
+C<embedding_providers> row. For tests, all fields may be supplied directly
+as named arguments (presence of C<url> triggers the test bypass path):
 
-    provider    — embedding provider key (VectorSearchProvider)
-    model       — model name            (VectorSearchModel)
-    api_key     — API key               (VectorSearchAPIKey)
+    url                   — embedding API endpoint
+    model                 — model name
+    api_key               — bearer token (optional)
+    auth_type             — 'none' or 'bearer' (default: 'none')
+    request_body_template — JSON template with {{text}} and {{model}} sentinels
+    response_key          — dot-notation path to the embedding in the response
+
+Dies if no active provider is configured and no args are supplied.
 
 =cut
 
 sub new {
     my ( $class, %args ) = @_;
 
-    my $provider = $args{provider} // C4::Context->preference('VectorSearchProvider');
-    my $model    = $args{model}    // C4::Context->preference('VectorSearchModel');
+    my ( $url, $model, $api_key, $auth_type, $request_body_template, $response_key );
 
-    die "Koha::SearchEngine::Embedder: VectorSearchProvider is not configured"
-        unless $provider;
-    die "Koha::SearchEngine::Embedder: VectorSearchModel is not configured"
-        unless $model;
+    if ( $args{url} ) {
+        $url                   = $args{url};
+        $model                 = $args{model}                 // die "model required";
+        $api_key               = $args{api_key}               // '';
+        $auth_type             = $args{auth_type}             // 'none';
+        $request_body_template = $args{request_body_template} // die "request_body_template required";
+        $response_key          = $args{response_key}          // 'data.0.embedding';
+    } else {
+        my $record = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
+        die "Koha::SearchEngine::Embedder: No active embedding provider configured"
+            unless $record;
+        $url                   = $record->url;
+        $model                 = $record->model;
+        $api_key               = $record->api_key // '';
+        $auth_type             = $record->auth_type;
+        $request_body_template = $record->request_body_template;
+        $response_key          = $record->response_key;
+    }
 
     my $self = {
-        _provider => $provider,
-        _model    => $model,
-        _api_key  => $args{api_key} // C4::Context->preference('VectorSearchAPIKey') // '',
-        _ua       => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
+        _url                   => $url,
+        _model                 => $model,
+        _api_key               => $api_key,
+        _auth_type             => $auth_type,
+        _request_body_template => $request_body_template,
+        _response_key          => $response_key,
+        _ua                    => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
     };
     return bless $self, $class;
 }
@@ -220,34 +181,107 @@ sub text_for_biblio {
 
     my $embedding = $self->_do_embed( $text );
 
-Internal dispatcher. Looks up the active provider in C<$PROVIDER_CONFIG>,
-builds and sends the HTTP request, and returns the embedding arrayref.
-Dies on HTTP error, missing embedding, or unknown provider — the caller
-(C<embed>) catches and converts to C<undef>.
+Internal dispatcher. Builds the request body from the template, sends the
+HTTP request, and extracts the embedding from the response via the dot-notation
+C<_response_key>. Dies on HTTP error, missing embedding, or JSON parse failure —
+the caller (C<embed>) catches and converts to C<undef>.
 
 =cut
 
 sub _do_embed {
     my ( $self, $text ) = @_;
 
-    my $config = $PROVIDER_CONFIG->{ $self->{_provider} }
-        or die "Unknown embedding provider '$self->{_provider}'";
+    my $body = $self->_build_request_body($text);
 
-    my $req = HTTP::Request->new( POST => $config->{url} );
+    my $req = HTTP::Request->new( POST => $self->{_url} );
     $req->content_type('application/json; charset=UTF-8');
     $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
-        if $config->{auth} eq 'bearer' && $self->{_api_key};
-    $req->content( encode_json( { model => $self->{_model}, $config->{build_input}->($text) } ) );
+        if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
+    $req->content($body);
 
     my $response = $self->{_ua}->request($req);
     die "HTTP " . $response->status_line unless $response->is_success;
 
     my $data      = decode_json( $response->decoded_content );
-    my $embedding = $config->{extract}->($data);
-    die "No embedding in response from '$self->{_provider}'"
+    my $embedding = $self->_resolve_path( $data, $self->{_response_key} );
+    die "No embedding in response from '$self->{_url}'"
         unless ref($embedding) eq 'ARRAY';
 
     return $embedding;
+}
+
+=head2 _build_request_body
+
+    my $json = $self->_build_request_body( $text );
+
+Decodes the stored request body template as JSON, substitutes C<{{text}}>
+and C<{{model}}> sentinel string values with the actual text and model name,
+then re-encodes. All JSON escaping is handled by C<encode_json>.
+
+=cut
+
+sub _build_request_body {
+    my ( $self, $text ) = @_;
+
+    my $structure = decode_json( $self->{_request_body_template} );
+    my %subs      = (
+        '{{text}}'  => $text,
+        '{{model}}' => $self->{_model},
+    );
+    _substitute_sentinels( $structure, \%subs );
+    return encode_json($structure);
+}
+
+=head2 _substitute_sentinels
+
+    _substitute_sentinels( $node, \%subs );
+
+Recursively walks a decoded JSON structure, replacing any string value that
+exactly matches a key in C<%subs> with the corresponding replacement value.
+
+=cut
+
+sub _substitute_sentinels {
+    my ( $node, $subs ) = @_;
+
+    if ( ref($node) eq 'HASH' ) {
+        for my $key ( keys %$node ) {
+            if ( !ref( $node->{$key} ) && exists $subs->{ $node->{$key} // '' } ) {
+                $node->{$key} = $subs->{ $node->{$key} };
+            } else {
+                _substitute_sentinels( $node->{$key}, $subs );
+            }
+        }
+    } elsif ( ref($node) eq 'ARRAY' ) {
+        for my $i ( 0 .. $#$node ) {
+            if ( !ref( $node->[$i] ) && exists $subs->{ $node->[$i] // '' } ) {
+                $node->[$i] = $subs->{ $node->[$i] };
+            } else {
+                _substitute_sentinels( $node->[$i], $subs );
+            }
+        }
+    }
+}
+
+=head2 _resolve_path
+
+    my $value = $self->_resolve_path( $data, $path );
+
+Walks a dot-notation path (e.g. C<data.0.embedding>) into a decoded JSON
+structure, treating numeric segments as array indices.
+Returns C<undef> if any step is missing.
+
+=cut
+
+sub _resolve_path {
+    my ( $self, $data, $path ) = @_;
+
+    my $node = $data;
+    for my $key ( split /\./, $path ) {
+        return undef unless defined $node;
+        $node = ref($node) eq 'ARRAY' ? $node->[$key] : $node->{$key};
+    }
+    return $node;
 }
 
 1;
