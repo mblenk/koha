@@ -536,15 +536,26 @@ my $total = 0;    # the total results for the whole set
 my $facets;       # this object stores the faceted results that display on the left-hand of the results page
 my $results_hashref;
 
-my $server = 'biblioserver';
-eval {
-    my $itemtypes = { map { $_->{itemtype} => $_ } @{ Koha::ItemTypes->search_with_localization->unblessed } };
-    ( $error, $results_hashref, $facets ) = $searcher->search_compat(
-        $query,            $simple_query, \@sort_by, [$server],
-        $results_per_page, $offset,       undef,     $itemtypes,
-        $query_type,       $scan
-    );
-};
+my $server        = 'biblioserver';
+my $semantic_mode = $cgi->param('semantic')
+    && C4::Context->preference('VectorSearchEnabled');
+
+if ($semantic_mode) {
+    eval {
+        ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
+            $operands[0] // '', $results_per_page, $offset
+        );
+    };
+} else {
+    eval {
+        my $itemtypes = { map { $_->{itemtype} => $_ } @{ Koha::ItemTypes->search_with_localization->unblessed } };
+        ( $error, $results_hashref, $facets ) = $searcher->search_compat(
+            $query,            $simple_query, \@sort_by, [$server],
+            $results_per_page, $offset,       undef,     $itemtypes,
+            $query_type,       $scan
+        );
+    };
+}
 
 if ( $@ || $error ) {
     my $query_error = q{};

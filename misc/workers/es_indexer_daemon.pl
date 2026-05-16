@@ -63,6 +63,7 @@ use Koha::Logger;
 use Koha::BackgroundJobs;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Indexer;
+use Koha::BackgroundJob::IndexBiblioEmbeddings;
 
 my $help;
 my $batch_size = 10;
@@ -256,6 +257,9 @@ sub commit {
         while ( ( my @bib_chunk = $biblio_chunks->() ) ) {
             try {
                 $biblio_indexer->update_index( \@bib_chunk );
+                if ( C4::Context->preference('VectorSearchEnabled') ) {
+                    Koha::BackgroundJob::IndexBiblioEmbeddings->new->enqueue( { record_ids => \@bib_chunk } );
+                }
             } catch {
                 $logger->warn( sprintf "Update of elastic index failed with: %s", $_ );
             };

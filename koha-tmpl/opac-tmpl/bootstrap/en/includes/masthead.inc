@@ -372,6 +372,11 @@
                                 </div>
                                 <!-- /.form-row -->
                                 <input type="hidden" name="weight_search" value="1" />
+                                [% IF Koha.Preference('VectorSearchEnabled') %]
+                                    <div class="mt-1">
+                                        <label class="form-check-label"><input type="checkbox" class="form-check-input" name="semantic" value="1" /> Semantic search</label>
+                                    </div>
+                                [% END %]
                             </form>
                         [% END # / ( OpacCustomSearch ) %] </div
                     ><!-- /#opac-main-search -->

@@ -49,6 +49,7 @@ use Koha::AuthorisedValueCategories;
 use Koha::SearchEngine::QueryBuilder;
 use Koha::SearchEngine::Search;
 use Koha::Exceptions::Elasticsearch;
+use Koha::SearchEngine::Embedder;
 use MARC::Record;
 use MARC::File::XML;
 use MIME::Base64 qw( decode_base64 );
@@ -644,6 +645,94 @@ sub _aggregation_scan {
     $result{biblioserver}{hits}    = $count;
     $result{biblioserver}{RECORDS} = \@records;
     return ( undef, \%result, undef );
+}
+
+=head2 semantic_search
+
+    my ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
+        $query_text, $results_per_page, $offset, %opts
+    );
+
+Embeds C<$query_text> via L<Koha::SearchEngine::Embedder> and runs an
+Elasticsearch kNN search against the C<embedding> dense_vector field.
+
+Returns results in the same shape as L</search_compat> so CGI scripts can
+branch on a single flag without changing template variable names.
+
+Options:
+
+=over 4
+
+=item C<num_candidates>
+
+ES kNN num_candidates parameter. Defaults to C<$results_per_page * 10>.
+
+=back
+
+Requires Elasticsearch 8.x and C<VectorSearchEnabled> to be set. Returns an
+error string (and C<undef> results) gracefully on any failure.
+
+=cut
+
+sub semantic_search {
+    my ( $self, $query_text, $results_per_page, $offset, %opts ) = @_;
+
+    return ( "VectorSearchEnabled is off", undef, [] )
+        unless C4::Context->preference('VectorSearchEnabled');
+
+    $results_per_page //= 20;
+    $offset           //= 0;
+
+    my $vector = Koha::SearchEngine::Embedder->new->embed($query_text);
+    return ( "Could not generate query embedding", undef, [] ) unless $vector;
+
+    my $k              = $results_per_page + $offset;
+    my $num_candidates = $opts{num_candidates} // ( $results_per_page * 10 );
+    $num_candidates = $k if $num_candidates < $k;
+
+    my $body = {
+        knn => {
+            field          => 'embedding',
+            query_vector   => $vector,
+            k              => $k,
+            num_candidates => $num_candidates,
+        },
+        size => $results_per_page,
+        from => $offset,
+    };
+
+    my $results = eval {
+        $self->get_elasticsearch->search(
+            index            => $self->index_name,
+            track_total_hits => \1,
+            body             => $body,
+        );
+    };
+    return ( $self->process_error($@), undef, [] ) if $@;
+
+    my $hits = $results->{hits};
+    $hits->{total} = $hits->{total}{value}
+        if ref $hits->{total} eq 'HASH';
+
+    my ( @records, @scores );
+    my $i = $offset;
+    for my $hit ( @{ $hits->{hits} } ) {
+        $records[$i] = $self->decode_record_from_result( $hit->{_source} );
+        $scores[$i]  = $hit->{_score};
+        $i++;
+    }
+
+    return (
+        undef,
+        {
+            biblioserver => {
+                hits    => $hits->{total},
+                RECORDS => \@records,
+                scores  => \@scores,
+            }
+        },
+        []
+    );
 }
 
 1;

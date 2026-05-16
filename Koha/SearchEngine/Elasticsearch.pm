@@ -28,6 +28,7 @@ use Koha::Filter::MARC::EmbedSeeFromHeadings;
 use Koha::I18N qw(__);
 use Koha::SearchFields;
 use Koha::SearchMarcMaps;
+use Koha::EmbeddingProviders;
 use Koha::Caches;
 use Koha::AuthorisedValueCategories;
 use C4::Heading;
@@ -271,6 +272,22 @@ sub get_elasticsearch_mappings {
         if ( $self->index eq 'authorities' ) {
             $mappings->{properties}{'match-heading'}             = _get_elasticsearch_field_config( 'search', 'text' );
             $mappings->{properties}{'subject-heading-thesaurus'} = _get_elasticsearch_field_config( 'search', 'text' );
+        }
+        if ( $self->index eq $BIBLIOS_INDEX
+            && C4::Context->preference('VectorSearchEnabled') )
+        {
+            my $provider  = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
+            my $dims      = $provider ? $provider->dimensions : 768;
+            my $vec_field = { type => 'dense_vector', dims => int($dims) };
+            my $es_major  = eval {
+                my $info = $self->get_elasticsearch->info;
+                int( ( split /\./, $info->{version}{number} )[0] );
+            } // 0;
+            if ( $es_major >= 8 ) {
+                $vec_field->{index}      = \1;
+                $vec_field->{similarity} = 'cosine';
+            }
+            $mappings->{properties}{embedding} = $vec_field;
         }
         $all_mappings{ $self->index } = $mappings;
     }

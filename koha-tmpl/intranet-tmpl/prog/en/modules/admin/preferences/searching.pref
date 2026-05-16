@@ -410,3 +410,29 @@ Searching:
             - pref: LibrisURL
               class: url
             - "Please only change this if you are sure it needs changing."
+
+    Vector search:
+        -
+            - pref: VectorSearchEnabled
+              type: boolean
+              choices:
+                  1: Enable
+                  0: "Don't enable"
+            - "vector/semantic search (requires Elasticsearch 8.x). Changing this setting requires recreating the ES index with rebuild_elasticsearch.pl."
+        -
+            - pref: VectorSearchProvider
+              choices: vector-providers
+            - "as the embedding provider."
+        -
+            - "Embedding model"
+            - pref: VectorSearchModel
+              class: long
+        -
+            - "API key (leave empty for Ollama)"
+            - pref: VectorSearchAPIKey
+              class: password
+        -
+            - "Vector dimensions"
+            - pref: VectorSearchDimensions
+              class: short
+            - "(768 for nomic-embed-text, 1536 for text-embedding-3-small)."

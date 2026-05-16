@@ -16,13 +16,18 @@
                 <input type="text" name="q" id="search-form" size="20" title="Enter the terms you wish to search for." class="query form-text head-searchbox form-control" placeholder="Enter search keywords" />
             [% END %]
 
-            [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') %]
+            [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') || Koha.Preference('VectorSearchEnabled') %]
                 <button type="button" class="form-extra-content-toggle" title="More options"><i class="form-extra-content-icon fa-solid fa-sliders" aria-hidden="true"></i></button>
             [% END %]
         </div>
         <button type="submit" aria-label="Search"><i class="fa fa-arrow-right"></i></button>
 
         <div class="form-extra-content">
+            [% IF Koha.Preference('VectorSearchEnabled') %]
+                <div>
+                    <label><input type="checkbox" name="semantic" value="1" /> Semantic search</label>
+                </div>
+            [% END %]
             [% IF ( Koha.Preference('IntranetCatalogSearchPulldown') ) %]
                 <div>
                     <label for="idx">Search index</label>

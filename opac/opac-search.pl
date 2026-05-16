@@ -583,6 +583,12 @@ if ($tag) {
     # FIXME: Because search and standard search don't work together OpacHiddenItems
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
+} elsif ( $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled') ) {
+    eval {
+        ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
+            $operands[0] // '', $results_per_page, $offset
+        );
+    };
 } else {
     my $json = JSON->new->utf8->allow_nonref(1);
     $pasarParams .= '&amp;query=' . uri_escape_utf8( $json->encode($query) );
