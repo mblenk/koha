@@ -14,6 +14,8 @@
     [% END %]</title
 >
 [% INCLUDE 'doc-head-close.inc' %]
+[% Asset.css("lib/codemirror/codemirror.css") | $raw %]
+[% Asset.css("lib/codemirror/lint.css") | $raw %]
 </head>
 
 <body id="embedding_providers" class="embedding_providers">
@@ -33,6 +35,9 @@
     [% INCLUDE 'calendar.inc' %]
     [% INCLUDE 'datatables.inc' %]
     [% INCLUDE 'js-date-format.inc' %]
+    [% Asset.js("lib/codemirror/codemirror.min.js") | $raw %]
+    [% Asset.js("lib/codemirror/javascript.min.js") | $raw %]
+    [% Asset.js("lib/codemirror/lint.min.js") | $raw %]
     [% Asset.js("js/admin-menu.js") | $raw %]
     [% Asset.js("js/vue/dist/admin/embedding_providers.js") | $raw %]
 [% END %]

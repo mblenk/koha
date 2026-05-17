@@ -15,6 +15,31 @@ export default {
         routeAction: String,
     },
     setup(props) {
+        const findEmbeddingPath = (obj, prefix = "") => {
+            let bestMatch = { path: null, length: 0 };
+            if (Array.isArray(obj)) {
+                if (obj.every(v => typeof v === "number")) {
+                    return { path: prefix, length: obj.length };
+                }
+                obj.forEach((item, i) => {
+                    const child = findEmbeddingPath(
+                        item,
+                        prefix ? `${prefix}.${i}` : String(i)
+                    );
+                    if (child.length > bestMatch.length) bestMatch = child;
+                });
+            } else if (obj !== null && typeof obj === "object") {
+                Object.keys(obj).forEach(key => {
+                    const child = findEmbeddingPath(
+                        obj[key],
+                        prefix ? `${prefix}.${key}` : key
+                    );
+                    if (child.length > bestMatch.length) bestMatch = child;
+                });
+            }
+            return bestMatch;
+        };
+
         const baseResource = useBaseResource({
             resourceName: "embedding_provider",
             nameAttr: "name",
@@ -99,11 +124,32 @@ export default {
                 {
                     name: "request_body_template",
                     required: true,
-                    type: "textarea",
+                    type: "json",
                     label: $__("Request body template"),
                     toolTip: $__(
                         'Full JSON body sent to the provider. Use "{{text}}" for the input and "{{model}}" for the model name. Examples — Ollama: {"model":"{{model}}","prompt":"{{text}}"} — OpenAI: {"model":"{{model}}","input":"{{text}}"} — Voyage (array): {"model":"{{model}}","input":["{{text}}"]}'
                     ),
+                },
+                {
+                    name: "response_payload",
+                    type: "json",
+                    label: $__("Example API response"),
+                    hideIn: ["List", "Show"],
+                    toolTip: $__(
+                        "Paste a real or example JSON response from the provider. The embedding path will be detected automatically and populated in the field below."
+                    ),
+                    onChange: resource => {
+                        if (!resource.response_payload) return;
+                        try {
+                            const result = findEmbeddingPath(
+                                JSON.parse(resource.response_payload)
+                            );
+                            if (result.path)
+                                resource.response_key = result.path;
+                        } catch (e) {
+                            // Invalid JSON — the CodeMirror linter shows the error inline
+                        }
+                    },
                 },
                 {
                     name: "response_key",
@@ -113,6 +159,7 @@ export default {
                     toolTip: $__(
                         "Dot-notation path to the embedding array in the response — e.g. 'embedding', 'data.0.embedding'"
                     ),
+                    disabled: resource => !!resource.response_payload,
                 },
                 {
                     name: "dimensions",
@@ -157,6 +204,7 @@ export default {
             const embeddingProviderId = embeddingProvider.embedding_provider_id;
 
             delete embeddingProvider.embedding_provider_id;
+            delete embeddingProvider.response_payload;
 
             if (embeddingProviderId) {
                 return baseResource.apiClient
