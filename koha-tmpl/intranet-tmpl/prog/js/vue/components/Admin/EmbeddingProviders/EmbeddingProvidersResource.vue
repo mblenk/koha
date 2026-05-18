@@ -120,6 +120,12 @@ export default {
                     disabled: resource =>
                         resource.auth_type === "none" || !resource.auth_type,
                     hideIn: ["List"],
+                    toolTip:
+                        props.routeAction === "edit"
+                            ? $__(
+                                  "Leave blank to keep the existing API key. Enter a new value to replace it."
+                              )
+                            : null,
                 },
                 {
                     name: "request_body_template",
@@ -127,7 +133,7 @@ export default {
                     type: "json",
                     label: $__("Request body template"),
                     toolTip: $__(
-                        'Full JSON body sent to the provider. Use "{{text}}" for the input and "{{model}}" for the model name. Examples — Ollama: {"model":"{{model}}","prompt":"{{text}}"} — OpenAI: {"model":"{{model}}","input":"{{text}}"} — Voyage (array): {"model":"{{model}}","input":["{{text}}"]}'
+                        'Full JSON body sent to the provider. Use "{{text}}" for the input and "{{model}}" for the model name. Example: {"model":"{{model}}","prompt":"{{text}}"}'
                     ),
                 },
                 {

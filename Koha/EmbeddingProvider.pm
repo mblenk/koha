@@ -18,9 +18,11 @@ package Koha::EmbeddingProvider;
 # along with Koha; if not, see <https://www.gnu.org/licenses>.
 
 use Modern::Perl;
+use Encode qw(decode_utf8);
 
 use base qw(Koha::Object);
 
+use Koha::Encryption;
 use Koha::EmbeddingProviders;
 
 =head1 NAME
@@ -33,13 +35,17 @@ Koha::EmbeddingProvider - Koha EmbeddingProvider Object class
 
 =head3 store
 
-Overridden store method. When saving a provider with status 'active',
-deactivates all other providers first so only one can be active at a time.
+Overridden store method. Encrypts api_key if present, then deactivates all
+other providers before saving if status is 'active'.
 
 =cut
 
 sub store {
     my ($self) = @_;
+
+    if ( $self->api_key ) {
+        $self->api_key( Koha::Encryption->new->encrypt_hex( $self->api_key ) );
+    }
 
     if ( $self->status eq 'active' ) {
         my $active_provider = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
@@ -50,6 +56,34 @@ sub store {
     }
 
     return $self->SUPER::store;
+}
+
+=head3 plain_text_api_key
+
+    my $key = $provider->plain_text_api_key;
+
+Decrypt and return the api_key in plain text.
+
+=cut
+
+sub plain_text_api_key {
+    my ($self) = @_;
+    return decode_utf8( Koha::Encryption->new->decrypt_hex( $self->api_key ) )
+        if $self->api_key;
+}
+
+=head3 to_api
+
+Overridden to_api — strips api_key from all API responses so the encrypted
+value is never exposed over the wire.
+
+=cut
+
+sub to_api {
+    my ( $self, $params ) = @_;
+    my $json = $self->SUPER::to_api($params);
+    delete $json->{api_key};
+    return $json;
 }
 
 =head2 Internal methods

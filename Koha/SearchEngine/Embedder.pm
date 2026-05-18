@@ -75,24 +75,24 @@ Dies if no active provider is configured and no args are supplied.
 =cut
 
 sub new {
-    my ( $class, %args ) = @_;
+    my ( $class, $args ) = @_;
 
     my ( $url, $model, $api_key, $auth_type, $request_body_template, $response_key );
 
-    if ( $args{url} ) {
-        $url                   = $args{url};
-        $model                 = $args{model}                 // die "model required";
-        $api_key               = $args{api_key}               // '';
-        $auth_type             = $args{auth_type}             // 'none';
-        $request_body_template = $args{request_body_template} // die "request_body_template required";
-        $response_key          = $args{response_key}          // 'data.0.embedding';
+    if ( $args->{url} ) {
+        $url                   = $args->{url};
+        $model                 = $args->{model}                 // die "model required";
+        $api_key               = $args->{api_key}               // '';
+        $auth_type             = $args->{auth_type}             // 'none';
+        $request_body_template = $args->{request_body_template} // die "request_body_template required";
+        $response_key          = $args->{response_key}          // 'data.0.embedding';
     } else {
         my $record = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
         die "Koha::SearchEngine::Embedder: No active embedding provider configured"
             unless $record;
         $url                   = $record->url;
         $model                 = $record->model;
-        $api_key               = $record->api_key // '';
+        $api_key               = $record->plain_text_api_key // '';
         $auth_type             = $record->auth_type;
         $request_body_template = $record->request_body_template;
         $response_key          = $record->response_key;

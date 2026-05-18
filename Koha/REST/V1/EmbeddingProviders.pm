@@ -21,6 +21,7 @@ use Modern::Perl;
 
 use Mojo::Base 'Mojolicious::Controller';
 
+use Koha::Encryption;
 use Koha::EmbeddingProviders;
 
 use Scalar::Util qw( blessed );
@@ -76,7 +77,10 @@ sub add {
     my $c = shift->openapi->valid_input or return;
 
     return try {
-        my $provider = Koha::EmbeddingProvider->new_from_api( $c->req->json );
+        my $body     = $c->req->json;
+        my $api_key  = delete $body->{api_key};
+        my $provider = Koha::EmbeddingProvider->new_from_api($body);
+        $provider->api_key( Koha::Encryption->new->encrypt_hex($api_key) ) if $api_key;
         $provider->store;
         $c->res->headers->location( $c->req->url->to_string . '/' . $provider->embedding_provider_id );
         return $c->render(
@@ -101,6 +105,9 @@ sub add {
 sub update {
     my $c = shift->openapi->valid_input or return;
 
+    my $body    = $c->req->json;
+    my $api_key = delete $body->{api_key};
+
     my $provider = $c->objects->find_rs(
         Koha::EmbeddingProviders->new,
         $c->param('embedding_provider_id')
@@ -110,7 +117,9 @@ sub update {
         unless $provider;
 
     return try {
-        $provider->set_from_api( $c->req->json )->store;
+        $provider->set_from_api($body);
+        $provider->api_key( Koha::Encryption->new->encrypt_hex($api_key) ) if $api_key;
+        $provider->store;
         $provider->discard_changes;
         return $c->render( status => 200, openapi => $c->objects->to_api($provider) );
     } catch {
