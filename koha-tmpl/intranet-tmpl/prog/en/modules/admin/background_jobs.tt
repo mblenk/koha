@@ -230,6 +230,14 @@
                 '_id': 'file_transport_test',
                 '_str': _("File transport connection test")
             },
+            {
+                '_id': 'index_biblio_embeddings',
+                '_str': _("Index biblio embeddings").escapeHtml()
+            },
+            {
+                '_id': 'rebuild_all_embeddings',
+                '_str': _("Rebuild all embeddings").escapeHtml()
+            },
             [% FOR job_type IN plugin_job_types %]
             {
                 '_id': '[% job_type.id | html %]',

@@ -64,6 +64,7 @@ use Koha::Library::Groups;
 use Koha::Patrons;
 use Koha::Plugins;
 use Koha::SearchFields;
+use Koha::BackgroundJobs;
 
 use POSIX qw(ceil floor strftime);
 use URI::Escape;
@@ -584,11 +585,20 @@ if ($tag) {
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
 } elsif ( $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled') ) {
-    eval {
-        ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
-            $operands[0] // '', $results_per_page, $offset
-        );
-    };
+    my $embedding_reindex_in_progress =
+        Koha::BackgroundJobs->search(
+        { type => 'rebuild_all_embeddings', status => { -in => [qw(new started)] } }
+        )->count > 0;
+
+    if ($embedding_reindex_in_progress) {
+        $template->param( embedding_reindex_in_progress => 1 );
+    } else {
+        eval {
+            ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
+                $operands[0] // '', $results_per_page, $offset
+            );
+        };
+    }
 } else {
     my $json = JSON->new->utf8->allow_nonref(1);
     $pasarParams .= '&amp;query=' . uri_escape_utf8( $json->encode($query) );
@@ -611,6 +621,7 @@ if ( not $tag and ( $@ || $error ) ) {
     $query_error .= $error if $error;
     $query_error .= $@     if $@;
     $template->param( query_error => $query_error );
+    $template->param( embedding_reindex_in_progress => 0 );
     output_html_with_http_headers $cgi, $cookie, $template->output;
     exit;
 }

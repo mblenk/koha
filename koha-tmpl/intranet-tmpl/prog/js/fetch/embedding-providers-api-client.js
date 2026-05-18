@@ -5,6 +5,12 @@ export class EmbeddingProvidersAPIClient {
         });
     }
 
+    get config() {
+        return {
+            get: () => this.httpClient.get({ endpoint: "/config" }),
+        };
+    }
+
     get embedding_providers() {
         return {
             create: embedding_provider =>

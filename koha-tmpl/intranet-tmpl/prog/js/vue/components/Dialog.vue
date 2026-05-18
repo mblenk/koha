@@ -85,8 +85,7 @@
                         id="close_modal"
                         class="btn btn-default deny cancel"
                         type="button"
-                        data-bs-dismiss="modal"
-                        @click="removeConfirmationMessages"
+                        @click="() => { confirmation.cancel_callback?.(); removeConfirmationMessages(); }"
                     >
                         <i class="fa fa-fw fa-remove"></i>
                         <span v-html="confirmation.cancel_label"></span>

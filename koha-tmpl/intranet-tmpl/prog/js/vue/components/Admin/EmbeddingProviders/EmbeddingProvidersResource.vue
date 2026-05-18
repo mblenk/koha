@@ -9,12 +9,34 @@ import BaseResource from "../../BaseResource.vue";
 import { useBaseResource } from "../../../composables/base-resource.js";
 import { APIClient } from "../../../fetch/api-client.js";
 import { $__ } from "@koha-vue/i18n";
+import { onBeforeMount } from 'vue';
 
 export default {
     props: {
         routeAction: String,
     },
     setup(props) {
+        let esVersion = null;
+        onBeforeMount(async () => {
+            APIClient.embedding_providers.config.get().then(result => {
+                esVersion = result.elasticsearch_version;
+                if (esVersion !== null && esVersion < 8) {
+                    baseResource.setMessage(
+                        $__(
+                            "Elasticsearch version %s detected. Version 8 or higher is required for semantic search."
+                        ).format(esVersion || "unknown")
+                    );
+                }
+            });
+        })
+
+        const defaultToolbarButtons = (defaultButtons, resource) => {
+            return {
+                list: defaultButtons.list.filter(button => esVersion < 8 ),
+                show: defaultButtons.show
+            };
+        };
+
         const findEmbeddingPath = (obj, prefix = "") => {
             let bestMatch = { path: null, length: 0 };
             if (Array.isArray(obj)) {
@@ -68,6 +90,7 @@ export default {
                 newLabel: $__("New embedding provider"),
             },
             props,
+            defaultToolbarButtons,
             resourceAttrs: [
                 {
                     name: "embedding_provider_id",
@@ -233,6 +256,32 @@ export default {
             },
         };
 
+        let isProviderActive = false
+        const afterResourceFetch = (componentData, resource, caller) => {
+            if (caller === "form") {
+                isProviderActive = resource.status === "active" ? true : false
+            }
+        };
+
+        const performSave = (provider, providerId) => {
+            if (providerId) {
+                return baseResource.apiClient
+                    .update(provider, providerId)
+                    .then((provider) => {
+                        baseResource.setMessage(
+                            $__("Embedding provider updated!")
+                        )
+                        return provider
+                    });
+            }
+            return baseResource.apiClient
+                .create(provider)
+                .then((provider) => {
+                    baseResource.setMessage($__("Embedding provider created!"))
+                    return provider
+                });
+        };
+
         const onFormSave = (e, embeddingProviderToSave) => {
             e.preventDefault();
             const embeddingProvider = JSON.parse(
@@ -243,39 +292,57 @@ export default {
             delete embeddingProvider.embedding_provider_id;
             delete embeddingProvider.response_payload;
 
-            if (embeddingProviderId) {
-                return baseResource.apiClient
-                    .update(embeddingProvider, embeddingProviderId)
-                    .then(
-                        () => {
-                            baseResource.setMessage(
-                                $__("Embedding provider updated!")
-                            );
-                        },
-                        error => {}
-                    );
-            } else {
-                return baseResource.apiClient.create(embeddingProvider).then(
-                    () => {
-                        baseResource.setMessage(
-                            $__("Embedding provider created!")
-                        );
-                    },
-                    error => {}
+            if (embeddingProvider.status === "active" && esVersion !== null && esVersion < 8) {
+                baseResource.setMessage(
+                    $__(
+                        "Cannot activate: Elasticsearch version %s detected. Version 8 or higher is required."
+                    ).format(esVersion)
                 );
+                return Promise.resolve();
             }
-        };
 
-        baseResource.setMessage(
-            $__(
-                "Natural language search requires Elasticsearch version 8.x or higher."
-            )
-        );
+            if (embeddingProvider.status === "active" && !isProviderActive) {
+                return new Promise(resolve => {
+                    baseResource.setConfirmationDialog(
+                        {
+                            title: $__(
+                                "Semantic search will be temporarily unavailable"
+                            ),
+                            message: $__(
+                                "Saving this provider as active will trigger a full catalogue re-index. Semantic search will be disabled until the re-index is complete. Do you want to proceed?"
+                            ),
+                            accept_label: $__("Yes, save and re-index"),
+                            cancel_label: $__(
+                                "No (save provider as inactive)"
+                            ),
+                            cancel_callback: () => {
+                                embeddingProvider.status = "inactive";
+                                performSave(
+                                    embeddingProvider,
+                                    embeddingProviderId
+                                ).then(resolve);
+                            },
+                        },
+                        async () => {
+                            const provider = await performSave(
+                                embeddingProvider,
+                                embeddingProviderId
+                            );
+                            resolve(provider);
+                        }
+                    );
+                });
+            } else {
+                return performSave(embeddingProvider, embeddingProviderId);
+            }
+
+        };
 
         return {
             ...baseResource,
             tableOptions,
             onFormSave,
+            afterResourceFetch,
         };
     },
     name: "EmbeddingProvidersResource",

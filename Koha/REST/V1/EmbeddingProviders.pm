@@ -23,6 +23,8 @@ use Mojo::Base 'Mojolicious::Controller';
 
 use Koha::Encryption;
 use Koha::EmbeddingProviders;
+use Koha::BackgroundJob::RebuildAllEmbeddings;
+use Koha::SearchEngine::Elasticsearch;
 
 use Scalar::Util qw( blessed );
 use Try::Tiny    qw( catch try );
@@ -82,6 +84,7 @@ sub add {
         my $provider = Koha::EmbeddingProvider->new_from_api($body);
         $provider->api_key( Koha::Encryption->new->encrypt_hex($api_key) ) if $api_key;
         $provider->store;
+        _enqueue_full_reindex() if $provider->status eq 'active';
         $c->res->headers->location( $c->req->url->to_string . '/' . $provider->embedding_provider_id );
         return $c->render(
             status  => 201,
@@ -120,6 +123,7 @@ sub update {
         $provider->set_from_api($body);
         $provider->api_key( Koha::Encryption->new->encrypt_hex($api_key) ) if $api_key;
         $provider->store;
+        _enqueue_full_reindex() if $provider->status eq 'active';
         $provider->discard_changes;
         return $c->render( status => 200, openapi => $c->objects->to_api($provider) );
     } catch {
@@ -154,6 +158,37 @@ sub delete {
     } catch {
         $c->unhandled_exception($_);
     };
+}
+
+=head3 config
+
+=cut
+
+sub config {
+    my $c = shift->openapi->valid_input or return;
+
+    my $es_major = 0;
+    try {
+        my $es   = Koha::SearchEngine::Elasticsearch->new( { index => 'biblios' } );
+        my $info = $es->get_elasticsearch->info;
+        $es_major = int( ( split /\./, $info->{version}{number} )[0] );
+    } catch {};
+
+    return $c->render(
+        status  => 200,
+        openapi => { elasticsearch_version => $es_major },
+    );
+}
+
+=head3 _enqueue_full_reindex
+
+Enqueue C<IndexBiblioEmbeddings> jobs covering every biblio record, in chunks
+of 500. Called whenever an embedding provider is saved with status C<active>.
+
+=cut
+
+sub _enqueue_full_reindex {
+    Koha::BackgroundJob::RebuildAllEmbeddings->new->enqueue({});
 }
 
 1;

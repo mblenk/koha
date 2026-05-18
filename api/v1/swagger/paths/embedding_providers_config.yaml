@@ -1,0 +1,41 @@
+/embedding_providers/config:
+  get:
+    x-mojo-to: EmbeddingProviders#config
+    operationId: getEmbeddingProvidersConfig
+    description: Returns configuration data for the Embedding Providers Vue app
+    summary: Get the embedding providers config
+    tags:
+      - embedding_providers_config
+    produces:
+      - application/json
+    responses:
+      "200":
+        description: The embedding providers config
+        schema:
+          $ref: "../swagger.yaml#/definitions/embedding_providers_config"
+      "400":
+        description: Bad request
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "401":
+        description: Authentication required
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "403":
+        description: Not allowed
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "500":
+        description: |
+          Internal server error. Possible `error_code` attribute values:
+
+          * `internal_server_error`
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "503":
+        description: Under maintenance
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+    x-koha-authorization:
+      permissions:
+        parameters: manage_sysprefs

@@ -54,6 +54,8 @@ definitions:
     $ref: ./definitions/edifact_file.yaml
   embedding_provider:
     $ref: ./definitions/embedding_provider.yaml
+  embedding_providers_config:
+    $ref: ./definitions/embedding_providers_config.yaml
   erm_config:
     $ref: ./definitions/erm_config.yaml
   erm_agreement:
@@ -375,6 +377,8 @@ paths:
     $ref: "./paths/deleted_items.yaml#/~1deleted~1items"
   "/deleted/items/{item_id}":
     $ref: "./paths/deleted_items.yaml#/~1deleted~1items~1{item_id}"
+  /embedding_providers/config:
+    $ref: ./paths/embedding_providers_config.yaml#/~1embedding_providers~1config
   /embedding_providers:
     $ref: ./paths/embedding_providers.yaml#/~1embedding_providers
   "/embedding_providers/{embedding_provider_id}":

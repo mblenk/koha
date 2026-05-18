@@ -276,18 +276,18 @@ sub get_elasticsearch_mappings {
         if ( $self->index eq $BIBLIOS_INDEX
             && C4::Context->preference('VectorSearchEnabled') )
         {
-            my $provider  = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
-            my $dims      = $provider ? $provider->dimensions : 768;
-            my $vec_field = { type => 'dense_vector', dims => int($dims) };
-            my $es_major  = eval {
-                my $info = $self->get_elasticsearch->info;
-                int( ( split /\./, $info->{version}{number} )[0] );
-            } // 0;
-            if ( $es_major >= 8 ) {
-                $vec_field->{index}      = \1;
-                $vec_field->{similarity} = 'cosine';
-            }
-            $mappings->{properties}{embedding} = $vec_field;
+            try {
+                my $provider = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
+                my $dims     = $provider ? $provider->dimensions : 768;
+                $mappings->{properties}{embedding} = {
+                    type       => 'dense_vector',
+                    dims       => int($dims),
+                    index      => \1,
+                    similarity => 'cosine',
+                };
+            } catch {
+                warn "Could not add embedding field to ES mappings: $_";
+            };
         }
         $all_mappings{ $self->index } = $mappings;
     }

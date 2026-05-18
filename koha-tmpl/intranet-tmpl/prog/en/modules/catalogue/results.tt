@@ -454,6 +454,14 @@
         </div>
     [% END # /IF total %]
 
+    [% IF embedding_reindex_in_progress %]
+        <div class="alert alert-warning">
+            <p><strong>Semantic search is temporarily unavailable.</strong>
+            The search index is currently being rebuilt. Your search has been run as a keyword search instead.
+            Please try semantic search again once indexing is complete.</p>
+        </div>
+    [% END %]
+
     [% IF ( query_error ) %]
         <div class="alert alert-warning"
             ><p><strong>Error:</strong> [% query_error | html %]</p></div

@@ -1,0 +1,7 @@
+---
+type: object
+properties:
+  elasticsearch_version:
+    type: integer
+    description: Elasticsearch major version number (0 if unavailable)
+additionalProperties: false
