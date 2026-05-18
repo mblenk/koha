@@ -68,14 +68,13 @@ export default {
                 newLabel: $__("New embedding provider"),
             },
             props,
-            navigationOnFormSave: "EmbeddingProvidersList",
             resourceAttrs: [
                 {
                     name: "embedding_provider_id",
                     required: true,
                     type: "text",
                     label: $__("ID"),
-                    hideIn: ["Form"],
+                    hideIn: ["Form", "Show"],
                 },
                 {
                     name: "name",
@@ -112,6 +111,10 @@ export default {
                             description: $__("Bearer token (API key)"),
                         },
                     ],
+                    format: (value, resource, attr) => {
+                        return attr.options.find(op => op.value === value)
+                            .description;
+                    },
                 },
                 {
                     name: "api_key",
@@ -119,7 +122,7 @@ export default {
                     label: $__("API key"),
                     disabled: resource =>
                         resource.auth_type === "none" || !resource.auth_type,
-                    hideIn: ["List"],
+                    hideIn: ["List", "Show"],
                     toolTip:
                         props.routeAction === "edit"
                             ? $__(
@@ -135,6 +138,7 @@ export default {
                     toolTip: $__(
                         'Full JSON body sent to the provider. Use "{{text}}" for the input and "{{model}}" for the model name. Example: {"model":"{{model}}","prompt":"{{text}}"}'
                     ),
+                    hideIn: ["List", "Show"],
                 },
                 {
                     name: "response_payload",
@@ -156,6 +160,7 @@ export default {
                             // Invalid JSON — the CodeMirror linter shows the error inline
                         }
                     },
+                    hideIn: ["List", "Show"],
                 },
                 {
                     name: "response_key",
@@ -166,12 +171,34 @@ export default {
                         "Dot-notation path to the embedding array in the response — e.g. 'embedding', 'data.0.embedding'"
                     ),
                     disabled: resource => !!resource.response_payload,
+                    hideIn: ["List", "Show"],
+                },
+                {
+                    name: "marc_fields_config",
+                    type: "yaml",
+                    label: $__("Index fields"),
+                    toolTip: $__(
+                        "YAML defining which biblio and MARC fields should be used for matching search queries"
+                    ),
+                    defaultValue: [
+                        "biblio_fields:",
+                        "  - title",
+                        "  - subtitle",
+                        "  - author",
+                        "marc_fields:",
+                        '  - tag: "6.."',
+                        '    subfield: "a"',
+                        '  - tag: "520"',
+                        '    subfield: "a"',
+                    ].join("\n"),
+                    hideIn: ["List"],
                 },
                 {
                     name: "dimensions",
                     required: true,
                     type: "number",
                     label: $__("Vector dimensions"),
+                    hideIn: ["List"],
                 },
                 {
                     name: "status",
@@ -190,6 +217,10 @@ export default {
                     ],
                     selectLabel: "description",
                     requiredKey: "value",
+                    format: (value, resource, attr) => {
+                        return attr.options.find(op => op.value === value)
+                            .description;
+                    },
                 },
             ],
         });
@@ -234,6 +265,12 @@ export default {
                 );
             }
         };
+
+        baseResource.setMessage(
+            $__(
+                "Natural language search requires Elasticsearch version 8.x or higher."
+            )
+        );
 
         return {
             ...baseResource,

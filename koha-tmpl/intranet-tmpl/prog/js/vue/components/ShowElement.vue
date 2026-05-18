@@ -128,6 +128,10 @@
         <label>{{ attribute.label }}:</label>
         <span v-html="patronHTML(resource, attr)"></span>
     </template>
+    <template v-else-if="attribute.type == 'yaml'">
+        <label>{{ attribute.label }}:</label>
+        <YamlEditor :modelValue="resource[attribute.name]" :disabled="true" />
+    </template>
     <template
         v-else-if="attribute.type == 'relationship' && attribute.componentPath"
     >
@@ -172,13 +176,14 @@
 <script>
 import LinkWrapper from "./LinkWrapper.vue";
 import AdditionalFieldsDisplay from "./AdditionalFieldsDisplay.vue";
+import YamlEditor from "./Elements/YamlEditor.vue";
 import { useBaseElement } from "../composables/base-element.js";
 import { computed, defineAsyncComponent } from "vue";
 
 import { loadComponent } from "@koha-vue/loaders/componentResolver";
 
 export default {
-    components: { LinkWrapper, AdditionalFieldsDisplay },
+    components: { LinkWrapper, AdditionalFieldsDisplay, YamlEditor },
     setup(props) {
         const baseElement = useBaseElement({ ...props });
 
@@ -219,7 +224,11 @@ export default {
             if (valueKey?.includes(".")) {
                 return baseElement.accessNestedProperty(valueKey, resource);
             }
-            const displayValue = attr.format(resource[valueKey], resource);
+            const displayValue = attr.format(
+                resource[valueKey],
+                resource,
+                attr
+            );
             if (displayValue == "Invalid Date") {
                 return "";
             }

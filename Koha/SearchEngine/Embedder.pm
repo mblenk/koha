@@ -48,7 +48,9 @@ use Modern::Perl;
 use Try::Tiny qw( catch try );
 use LWP::UserAgent;
 use HTTP::Request;
-use JSON qw( decode_json encode_json );
+use JSON     qw( decode_json encode_json );
+use YAML::XS qw();
+use Encode   qw( encode_utf8 );
 use Koha::Biblios;
 use Koha::EmbeddingProviders;
 
@@ -79,6 +81,8 @@ sub new {
 
     my ( $url, $model, $api_key, $auth_type, $request_body_template, $response_key );
 
+    my $marc_fields_config;
+
     if ( $args->{url} ) {
         $url                   = $args->{url};
         $model                 = $args->{model}                 // die "model required";
@@ -86,6 +90,7 @@ sub new {
         $auth_type             = $args->{auth_type}             // 'none';
         $request_body_template = $args->{request_body_template} // die "request_body_template required";
         $response_key          = $args->{response_key}          // 'data.0.embedding';
+        $marc_fields_config    = $args->{marc_fields_config}    // {};
     } else {
         my $record = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
         die "Koha::SearchEngine::Embedder: No active embedding provider configured"
@@ -96,6 +101,7 @@ sub new {
         $auth_type             = $record->auth_type;
         $request_body_template = $record->request_body_template;
         $response_key          = $record->response_key;
+        $marc_fields_config    = eval { YAML::XS::Load( encode_utf8( $record->marc_fields_config // '' ) ) } // {};
     }
 
     my $self = {
@@ -105,6 +111,7 @@ sub new {
         _auth_type             => $auth_type,
         _request_body_template => $request_body_template,
         _response_key          => $response_key,
+        _marc_fields_config    => $marc_fields_config,
         _ua                    => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
     };
     return bless $self, $class;
@@ -148,25 +155,28 @@ Can be called as either a class or instance method.
 =cut
 
 sub text_for_biblio {
-    my ( $class_or_self, $biblionumber ) = @_;
+    my ( $self, $biblionumber ) = @_;
+
+    my $config = ref($self) ? $self->{_marc_fields_config} : {};
 
     my $biblio = Koha::Biblios->find($biblionumber);
     return undef unless $biblio;
 
     my @parts;
-    push @parts, $biblio->title    if $biblio->title;
-    push @parts, $biblio->subtitle if $biblio->subtitle;
-    push @parts, $biblio->author   if $biblio->author;
+    for my $field ( @{ $config->{biblio_fields} // [] } ) {
+        my $val = $biblio->can($field) ? $biblio->$field() : undef;
+        push @parts, $val if $val;
+    }
 
-    my $record = $biblio->metadata->record;
-    if ($record) {
-        for my $field ( $record->field('6..') ) {
-            my $subfield_a = $field->subfield('a');
-            push @parts, $subfield_a if $subfield_a;
-        }
-        for my $field ( $record->field('520') ) {
-            my $subfield_a = $field->subfield('a');
-            push @parts, $subfield_a if $subfield_a;
+    if ( @{ $config->{marc_fields} // [] } ) {
+        my $record = $biblio->metadata->record;
+        if ($record) {
+            for my $spec ( @{ $config->{marc_fields} } ) {
+                for my $marc_field ( $record->field( $spec->{tag} ) ) {
+                    my $val = $marc_field->subfield( $spec->{subfield} );
+                    push @parts, $val if $val;
+                }
+            }
         }
     }
 

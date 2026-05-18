@@ -516,7 +516,8 @@ export function useBaseResource(resourceConfig) {
                     if (field.format && typeof field.format === "function") {
                         const formatted = field.format(
                             resource[field.name],
-                            resource
+                            resource,
+                            field
                         );
                         hasFormattedData =
                             formatted !== null &&

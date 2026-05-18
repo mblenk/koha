@@ -22,6 +22,7 @@ return {
                   `response_key`          varchar(255) NOT NULL DEFAULT 'data.0.embedding' COMMENT 'Dot-notation path to the embedding array in the response',
                   `dimensions`            int(11)      NOT NULL DEFAULT 768 COMMENT 'Vector dimensionality',
                   `status`                enum('active','inactive') NOT NULL DEFAULT 'inactive' COMMENT 'Only one provider may be active at a time',
+                  `marc_fields_config`    text DEFAULT NULL COMMENT 'YAML configuration of biblio/MARC fields used by text_for_biblio',
                   PRIMARY KEY (`embedding_provider_id`),
                   UNIQUE KEY `name` (`name`)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci

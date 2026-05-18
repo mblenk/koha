@@ -247,6 +247,20 @@ export default {
                     });
                     return acc;
                 }
+                if (attr.type === "select" && !attr.avCat) {
+                    acc.push({
+                        title: attr.label,
+                        data: attr.name,
+                        searchable: true,
+                        orderable: true,
+                        render: function (data, type, row, meta) {
+                            return attr.options.find(
+                                op => op[attr.requiredKey] === data
+                            )[attr.selectLabel];
+                        },
+                    });
+                    return acc;
+                }
                 if (attr.type === "date") {
                     acc.push({
                         title: attr.label,

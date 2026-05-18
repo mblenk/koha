@@ -54,6 +54,20 @@
             "
         />
     </template>
+    <template v-else-if="attr.type == 'yaml'">
+        <YamlEditor
+            :id="getElementId"
+            v-model="resource[attr.name]"
+            :required="attr.required ? true : false"
+            :disabled="disabled"
+            @update:modelValue="
+                () => {
+                    checkForInputError();
+                    attr.onChange && attr.onChange(resource);
+                }
+            "
+        />
+    </template>
     <template v-else-if="attr.type == 'checkbox'">
         <InputCheckbox
             :id="getElementId"
@@ -225,6 +239,7 @@
 <script>
 import AdditionalFieldsEntry from "./AdditionalFieldsEntry.vue";
 import JsonEditor from "./Elements/JsonEditor.vue";
+import YamlEditor from "./Elements/YamlEditor.vue";
 import InputText from "./Elements/InputText.vue";
 import InputNumber from "./Elements/InputNumber.vue";
 import InputCheckbox from "./Elements/InputCheckbox.vue";
@@ -338,6 +353,7 @@ export default {
     components: {
         FormRelationshipSelect,
         JsonEditor,
+        YamlEditor,
         PatronAutoComplete,
         ToolTip,
         AdditionalFieldsEntry,
