@@ -51,6 +51,7 @@ use HTTP::Request;
 use JSON     qw( decode_json encode_json );
 use YAML::XS qw();
 use Encode   qw( encode_utf8 );
+use Koha::Authorities;
 use Koha::Biblios;
 use Koha::EmbeddingProviders;
 
@@ -119,6 +120,7 @@ sub new {
         _marc_fields_config    => $marc_fields_config,
         _batch_size            => $args->{batch_size} // 1,
         _ua                    => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
+        _authority_cache       => {},
     };
     return bless $self, $class;
 }
@@ -368,6 +370,14 @@ sub text_for_biblio {
                 for my $marc_field ( $record->field( $spec->{tag} ) ) {
                     my $val = $marc_field->subfield( $spec->{subfield} );
                     push @parts, $val if $val;
+
+                    if ( $spec->{include_authorities} && ref($self) ) {
+                        my $authid = $marc_field->subfield('9');
+                        if ($authid) {
+                            $authid =~ s/[()]//g;
+                            push @parts, @{ $self->_authority_variants($authid) };
+                        }
+                    }
                 }
             }
         }
@@ -378,6 +388,44 @@ sub text_for_biblio {
     my $text = join( ' ', @parts );
     $text = substr( $text, 0, MAX_TEXT_LENGTH ) if length($text) > MAX_TEXT_LENGTH;
     return $text;
+}
+
+=head2 _authority_variants
+
+    my $variants = $self->_authority_variants( $authid );
+
+Returns an arrayref of strings extracted from the authority record's 4XX (USE-FOR
+variant) and 680 (scope note) fields. Returns an empty arrayref if the authority is
+not found or has no relevant fields. Results are cached per embedder instance.
+
+=cut
+
+sub _authority_variants {
+    my ( $self, $authid ) = @_;
+
+    return $self->{_authority_cache}{$authid}
+        if exists $self->{_authority_cache}{$authid};
+
+    my @variants;
+    my $authority = Koha::Authorities->find($authid);
+    if ($authority) {
+        my $auth_record = try { $authority->record() } catch { undef };
+        if ($auth_record) {
+            for my $field ( $auth_record->fields() ) {
+                my $tag = $field->tag();
+                if ( $tag =~ /^4\d\d$/ ) {
+                    my $variant = $field->subfield('a');
+                    push @variants, $variant if $variant;
+                } elsif ( $tag eq '680' ) {
+                    my $note = $field->subfield('i') // $field->subfield('a');
+                    push @variants, $note if $note;
+                }
+            }
+        }
+    }
+
+    $self->{_authority_cache}{$authid} = \@variants;
+    return \@variants;
 }
 
 =head2 _do_embed

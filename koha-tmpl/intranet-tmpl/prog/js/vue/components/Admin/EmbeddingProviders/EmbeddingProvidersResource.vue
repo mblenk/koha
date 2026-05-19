@@ -215,7 +215,7 @@ export default {
                     type: "yaml",
                     label: $__("Index fields"),
                     toolTip: $__(
-                        "YAML defining which biblio and MARC fields should be used for matching search queries"
+                        "YAML defining which biblio and MARC fields should be used for matching search queries. Set include_authorities: true on a MARC field spec to append USE-FOR variant forms (4XX) and scope notes (680) from linked authority records."
                     ),
                     defaultValue: [
                         "biblio_fields:",
@@ -225,6 +225,7 @@ export default {
                         "marc_fields:",
                         '  - tag: "6.."',
                         '    subfield: "a"',
+                        "    include_authorities: true",
                         '  - tag: "520"',
                         '    subfield: "a"',
                     ].join("\n"),
