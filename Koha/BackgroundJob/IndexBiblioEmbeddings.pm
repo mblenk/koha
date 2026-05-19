@@ -99,6 +99,43 @@ sub process {
         skipped => 0,
     };
 
+    my @bulk_body;
+
+    my $flush_to_es = sub {
+        return unless @bulk_body;
+        try {
+            my $response = $es->bulk(
+                index => $es_obj->index_name,
+                body  => \@bulk_body,
+            );
+            warn "IndexBiblioEmbeddings: some ES bulk update errors occurred\n"
+                if $response->{errors};
+        } catch {
+            warn "IndexBiblioEmbeddings: ES bulk update failed: $_\n";
+        };
+        @bulk_body = ();
+    };
+
+    my $batch_size = $embedder->{_batch_size} // 1;
+    my @pending;    # [ { biblionumber => N, text => "..." }, ... ]
+
+    my $process_pending = sub {
+        return unless @pending;
+        my $vectors = $embedder->embed_batch( [ map { $_->{text} } @pending ] );
+        for my $i ( 0 .. $#pending ) {
+            my $vector = $vectors->[$i];
+            unless ($vector) {
+                $report->{skipped}++;
+                next;
+            }
+            push @bulk_body, { update => { _id => $pending[$i]{biblionumber} . q{} } };
+            push @bulk_body, { doc    => { embedding => $vector } };
+            $report->{success}++;
+        }
+        @pending = ();
+        $flush_to_es->() if @bulk_body >= 200;
+    };
+
     for my $biblionumber ( sort { $a <=> $b } @record_ids ) {
         last if $self->get_from_storage->status eq 'cancelled';
 
@@ -109,26 +146,13 @@ sub process {
             next;
         }
 
-        my $vector = $embedder->embed($text);
-        unless ($vector) {
-            $report->{skipped}++;
-            $self->step;
-            next;
-        }
-
-        try {
-            $es->update(
-                index => $es_obj->index_name,
-                id    => "$biblionumber",
-                body  => { doc => { embedding => $vector } },
-            );
-            $report->{success}++;
-        } catch {
-            warn "IndexBiblioEmbeddings: failed to update embedding for biblio $biblionumber: $_";
-        };
-
+        push @pending, { biblionumber => $biblionumber, text => $text };
+        $process_pending->() if @pending >= $batch_size;
         $self->step;
     }
+
+    $process_pending->();
+    $flush_to_es->();
 
     my $data = $self->decoded_data;
     $data->{report} = $report;

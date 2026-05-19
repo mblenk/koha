@@ -111,6 +111,14 @@ Only one provider may be active at a time
 
 YAML configuration of biblio/MARC fields used by text_for_biblio
 
+=head2 batch_size
+
+  data_type: 'integer'
+  default_value: 1
+  is_nullable: 0
+
+Number of texts to send per API call (1 = no batching)
+
 =cut
 
 __PACKAGE__->add_columns(
@@ -151,6 +159,8 @@ __PACKAGE__->add_columns(
   },
   "marc_fields_config",
   { data_type => "text", is_nullable => 1 },
+  "batch_size",
+  { data_type => "integer", default_value => 1, is_nullable => 0 },
 );
 
 =head1 PRIMARY KEY
@@ -180,8 +190,8 @@ __PACKAGE__->set_primary_key("embedding_provider_id");
 __PACKAGE__->add_unique_constraint("name", ["name"]);
 
 
-# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-18 09:45:58
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:N2LA2CWGn0Gz3YMqJtzIQQ
+# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-19 09:26:43
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:U+DWbr409kEGbW4bJk9ssg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

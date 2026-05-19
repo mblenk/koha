@@ -78,6 +78,7 @@ Dies if no active provider is configured and no args are supplied.
 
 sub new {
     my ( $class, $args ) = @_;
+    $args //= {};
 
     my ( $url, $model, $api_key, $auth_type, $request_body_template, $response_key );
 
@@ -102,6 +103,7 @@ sub new {
         $request_body_template = $record->request_body_template;
         $response_key          = $record->response_key;
         $marc_fields_config    = eval { YAML::XS::Load( encode_utf8( $record->marc_fields_config // '' ) ) } // {};
+        $args->{batch_size}    = $record->batch_size // 1;
     }
 
     my $self = {
@@ -112,6 +114,7 @@ sub new {
         _request_body_template => $request_body_template,
         _response_key          => $response_key,
         _marc_fields_config    => $marc_fields_config,
+        _batch_size            => $args->{batch_size} // 1,
         _ua                    => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
     };
     return bless $self, $class;
@@ -140,6 +143,143 @@ sub embed {
     };
 
     return $vector;
+}
+
+=head2 embed_batch
+
+    my $vectors = $embedder->embed_batch( \@texts );
+
+Embeds multiple texts in as few API calls as possible, grouping them into chunks of
+C<batch_size>. Returns an arrayref of vectors (arrayrefs of floats) in the same order
+as the input. Any text that fails to embed is returned as C<undef>.
+
+When C<batch_size> is 1 (the default) this falls back to calling C<embed()>
+sequentially, preserving backward-compatible behaviour. When a batch call fails the
+chunk is retried as individual C<embed()> calls.
+
+=cut
+
+sub embed_batch {
+    my ( $self, $texts ) = @_;
+
+    my $batch_size = $self->{_batch_size} // 1;
+
+    if ( $batch_size <= 1 ) {
+        return [ map { $self->embed($_) } @$texts ];
+    }
+
+    my @results;
+    my @chunk;
+
+    for my $text (@$texts) {
+        push @chunk, $text;
+        if ( @chunk >= $batch_size ) {
+            my $vectors = try { $self->_do_embed_batch( \@chunk ) }
+                catch { [ map { $self->embed($_) } @chunk ] };
+            push @results, @$vectors;
+            @chunk = ();
+        }
+    }
+    if (@chunk) {
+        my $vectors = try { $self->_do_embed_batch( \@chunk ) }
+            catch { [ map { $self->embed($_) } @chunk ] };
+        push @results, @$vectors;
+    }
+
+    return \@results;
+}
+
+=head2 _do_embed_batch
+
+    my $vectors = $self->_do_embed_batch( \@texts );
+
+Sends a single batch HTTP request for an arrayref of texts and returns an
+arrayref of embedding vectors. Dies on any failure so the caller can fall back.
+
+=cut
+
+sub _do_embed_batch {
+    my ( $self, $texts_ref ) = @_;
+
+    my @texts = map { length($_) > MAX_TEXT_LENGTH ? substr( $_, 0, MAX_TEXT_LENGTH ) : $_ } @$texts_ref;
+
+    my $body = $self->_build_batch_request_body( \@texts );
+
+    my $req = HTTP::Request->new( POST => $self->{_url} );
+    $req->content_type('application/json; charset=UTF-8');
+    $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
+        if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
+    $req->content($body);
+
+    my $response = $self->{_ua}->request($req);
+    die "HTTP " . $response->status_line unless $response->is_success;
+
+    my $data       = decode_json( $response->decoded_content );
+    my $embeddings = $self->_resolve_batch_path( $data, $self->{_response_key} );
+    die "No embeddings array in batch response from '$self->{_url}'"
+        unless ref($embeddings) eq 'ARRAY' && @$embeddings;
+
+    return $embeddings;
+}
+
+=head2 _build_batch_request_body
+
+    my $json = $self->_build_batch_request_body( \@texts );
+
+Like C<_build_request_body> but substitutes C<{{text}}> with an arrayref so that
+C<encode_json> serialises it as a JSON array — the format expected by batch-capable
+providers (C</api/embed>).
+
+=cut
+
+sub _build_batch_request_body {
+    my ( $self, $texts_ref ) = @_;
+
+    my $structure = decode_json( $self->{_request_body_template} );
+    my %subs = (
+        '{{text}}'  => $texts_ref,
+        '{{model}}' => $self->{_model},
+    );
+    _substitute_sentinels( $structure, \%subs );
+    return encode_json($structure);
+}
+
+=head2 _resolve_batch_path
+
+    my $vectors = $self->_resolve_batch_path( $data, $path );
+
+Extends C<_resolve_path> for batch responses. Locates the first numeric segment in the
+dot-notation C<$path>, treats the container before it as the per-item array, and
+navigates the remaining suffix on each element:
+
+    "data.0.embedding"  →  map { $_->{embedding} } @{ $data->{data} }
+    "embeddings.0"      →  @{ $data->{embeddings} }
+
+=cut
+
+sub _resolve_batch_path {
+    my ( $self, $data, $path ) = @_;
+
+    my @segments = split /\./, $path;
+
+    my $array_position;
+    for my $i ( 0 .. $#segments ) {
+        if ( $segments[$i] =~ /^\d+$/ ) { $array_position = $i; last; }
+    }
+
+    unless ( defined $array_position ) {
+        my $v = $self->_resolve_path( $data, $path );
+        return ref($v) eq 'ARRAY' ? $v : undef;
+    }
+
+    my $prefix    = $array_position > 0 ? join( '.', @segments[ 0 .. $array_position - 1 ] ) : '';
+    my $suffix    = $array_position < $#segments ? join( '.', @segments[ $array_position + 1 .. $#segments ] ) : '';
+    my $container = $prefix ? $self->_resolve_path( $data, $prefix ) : $data;
+    return undef unless ref($container) eq 'ARRAY';
+
+    return $suffix
+        ? [ map { $self->_resolve_path( $_, $suffix ) } @$container ]
+        : $container;
 }
 
 =head2 text_for_biblio

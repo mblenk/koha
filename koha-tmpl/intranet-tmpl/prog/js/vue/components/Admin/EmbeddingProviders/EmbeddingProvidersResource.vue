@@ -1,5 +1,6 @@
 <template>
     <BaseResource
+        v-if="initialized"
         :routeAction="routeAction"
         :instancedResource="this"
     ></BaseResource>
@@ -9,13 +10,14 @@ import BaseResource from "../../BaseResource.vue";
 import { useBaseResource } from "../../../composables/base-resource.js";
 import { APIClient } from "../../../fetch/api-client.js";
 import { $__ } from "@koha-vue/i18n";
-import { onBeforeMount } from 'vue';
+import { onBeforeMount, ref } from 'vue';
 
 export default {
     props: {
         routeAction: String,
     },
     setup(props) {
+        const initialized = ref(false)
         let esVersion = null;
         onBeforeMount(async () => {
             APIClient.embedding_providers.config.get().then(result => {
@@ -27,12 +29,13 @@ export default {
                         ).format(esVersion || "unknown")
                     );
                 }
+                initialized.value = true
             });
         })
 
         const defaultToolbarButtons = (defaultButtons, resource) => {
             return {
-                list: defaultButtons.list.filter(button => esVersion < 8 ),
+                list: defaultButtons.list.filter(button => esVersion && esVersion >= 8 ),
                 show: defaultButtons.show
             };
         };
@@ -224,6 +227,15 @@ export default {
                     hideIn: ["List"],
                 },
                 {
+                    name: "batch_size",
+                    type: "number",
+                    label: $__("Batch size"),
+                    toolTip: $__(
+                        "Number of texts sent per API call. Check that your provider supports batch requests, if not then leave this field blank."
+                    ),
+                    hideIn: ["List"],
+                },
+                {
                     name: "status",
                     required: true,
                     type: "select",
@@ -343,6 +355,7 @@ export default {
             tableOptions,
             onFormSave,
             afterResourceFetch,
+            initialized
         };
     },
     name: "EmbeddingProvidersResource",

@@ -5788,6 +5788,7 @@ CREATE TABLE `embedding_providers` (
   `dimensions`            int(11)      NOT NULL DEFAULT 768 COMMENT 'Vector dimensionality',
   `status`                enum('active','inactive') NOT NULL DEFAULT 'inactive' COMMENT 'Only one provider may be active at a time',
   `marc_fields_config`    text DEFAULT NULL COMMENT 'YAML configuration of biblio/MARC fields used by text_for_biblio',
+  `batch_size`            int(11) NOT NULL DEFAULT 1 COMMENT 'Number of texts to send per API call (1 = no batching)',
   PRIMARY KEY (`embedding_provider_id`),
   UNIQUE KEY `name` (`name`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

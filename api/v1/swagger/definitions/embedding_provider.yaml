@@ -42,9 +42,13 @@ properties:
       - inactive
   marc_fields_config:
     description: YAML defining which biblio/MARC fields are concatenated for embedding
-    type: 
+    type:
       - string
       - "null"
+  batch_size:
+    description: Number of texts to send per API call (1 disables batching)
+    type: integer
+    minimum: 1
 additionalProperties: false
 required:
   - name

@@ -19,7 +19,7 @@
 
 use Modern::Perl;
 
-use Test::More tests => 9;
+use Test::More tests => 10;
 use Test::NoWarnings;
 use Test::MockModule;
 use Test::MockObject;
@@ -86,6 +86,10 @@ subtest 'process() — all embeddings succeed' => sub {
     my $mock_embedder       = Test::MockObject->new;
     $mock_embedder->mock( 'text_for_biblio', sub { 'test text' } );
     $mock_embedder->mock( 'embed',           sub { [ 0.1, 0.2, 0.3 ] } );
+    $mock_embedder->mock( 'embed_batch', sub {
+        my ( $self, $texts ) = @_;
+        return [ map { $self->embed($_) } @$texts ];
+    } );
     $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
 
     my @bulk_calls;
@@ -132,6 +136,10 @@ subtest 'process() — text_for_biblio returns undef for one biblio' => sub {
         }
     );
     $mock_embedder->mock( 'embed', sub { [ 0.1, 0.2, 0.3 ] } );
+    $mock_embedder->mock( 'embed_batch', sub {
+        my ( $self, $texts ) = @_;
+        return [ map { $self->embed($_) } @$texts ];
+    } );
     $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
 
     my $mock_es_client = Test::MockObject->new;
@@ -175,6 +183,10 @@ subtest 'process() — embed returns undef for one biblio' => sub {
             return $embed_count == 1 ? undef : [ 0.1, 0.2, 0.3 ];
         }
     );
+    $mock_embedder->mock( 'embed_batch', sub {
+        my ( $self, $texts ) = @_;
+        return [ map { $self->embed($_) } @$texts ];
+    } );
     $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
 
     my $mock_es_client = Test::MockObject->new;
@@ -252,6 +264,10 @@ subtest 'process() — cancelled mid-loop' => sub {
             return [ 0.1, 0.2, 0.3 ];
         }
     );
+    $mock_embedder->mock( 'embed_batch', sub {
+        my ( $self, $texts ) = @_;
+        return [ map { $self->embed($_) } @$texts ];
+    } );
     $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
 
     my @bulk_calls;
@@ -287,6 +303,10 @@ subtest 'process() — ES bulk throws' => sub {
     my $mock_embedder       = Test::MockObject->new;
     $mock_embedder->mock( 'text_for_biblio', sub { 'test text' } );
     $mock_embedder->mock( 'embed',           sub { [ 0.1, 0.2, 0.3 ] } );
+    $mock_embedder->mock( 'embed_batch', sub {
+        my ( $self, $texts ) = @_;
+        return [ map { $self->embed($_) } @$texts ];
+    } );
     $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
 
     my $mock_es_client = Test::MockObject->new;
@@ -306,6 +326,52 @@ subtest 'process() — ES bulk throws' => sub {
 
     is( $job->status, 'finished', 'job completes despite ES bulk failure' );
     like( $warnings[0], qr/ES bulk update failed/, 'warning issued on bulk failure' );
+
+    $schema->storage->txn_rollback;
+};
+
+subtest 'process() — batch_size > 1 sends texts in chunks' => sub {
+    plan tests => 4;
+
+    $schema->storage->txn_begin;
+
+    $builder->build_object( { class => 'Koha::Biblios' } ) for 1 .. 3;
+    my $expected_total = Koha::Biblios->search->count;
+
+    my $mock_embedder_class = Test::MockModule->new('Koha::SearchEngine::Embedder');
+    my $mock_embedder       = Test::MockObject->new;
+    $mock_embedder->{_batch_size} = 2;
+    $mock_embedder->mock( 'text_for_biblio', sub { 'test text' } );
+
+    my @batch_sizes;
+    $mock_embedder->mock(
+        'embed_batch',
+        sub {
+            my ( $self, $texts ) = @_;
+            push @batch_sizes, scalar @$texts;
+            return [ map { [ 0.1, 0.2, 0.3 ] } @$texts ];
+        }
+    );
+    $mock_embedder_class->mock( 'new', sub { $mock_embedder } );
+
+    my $mock_es_client = Test::MockObject->new;
+    $mock_es_client->mock( 'bulk', sub { return { errors => 0 } } );
+    my $mock_es_class = Test::MockModule->new('Koha::SearchEngine::Elasticsearch');
+    my $mock_es_obj   = Test::MockObject->new;
+    $mock_es_obj->mock( 'get_elasticsearch', sub { $mock_es_client } );
+    $mock_es_obj->mock( 'index_name',        sub { 'koha_test_biblios' } );
+    $mock_es_class->mock( 'new', sub { $mock_es_obj } );
+
+    my $job_id = Koha::BackgroundJob::RebuildAllEmbeddings->new->enqueue( {} );
+    my $job    = Koha::BackgroundJobs->find($job_id)->_derived_class;
+    $job->process( {} );
+
+    my $report = $job->decoded_data->{report};
+
+    is( $job->status,       'finished',      'job finishes successfully' );
+    is( $report->{success}, $expected_total, 'all biblios embedded' );
+    ok( scalar @batch_sizes > 0,             'embed_batch was called' );
+    ok( $batch_sizes[0] <= 2,                'first batch is at most batch_size texts' );
 
     $schema->storage->txn_rollback;
 };

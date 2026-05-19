@@ -120,6 +120,26 @@ sub process {
         @bulk_body = ();
     };
 
+    my $batch_size = $embedder->{_batch_size} // 1;
+    my @pending;    # [ { biblionumber => N, text => "..." }, ... ]
+
+    my $process_pending = sub {
+        return unless @pending;
+        my $vectors = $embedder->embed_batch( [ map { $_->{text} } @pending ] );
+        for my $i ( 0 .. $#pending ) {
+            my $vector = $vectors->[$i];
+            unless ($vector) {
+                $report->{skipped}++;
+                next;
+            }
+            push @bulk_body, { update => { _id => $pending[$i]{biblionumber} . q{} } };
+            push @bulk_body, { doc    => { embedding => $vector } };
+            $report->{success}++;
+        }
+        @pending = ();
+        $flush_to_es->() if @bulk_body >= 200;
+    };
+
     my $rs = Koha::Biblios->search(
         {},
         { order_by => { -asc => 'biblionumber' } }
@@ -137,21 +157,12 @@ sub process {
             next;
         }
 
-        my $vector = $embedder->embed($text);
-        unless ($vector) {
-            $report->{skipped}++;
-            $self->step;
-            next;
-        }
-
-        push @bulk_body, { update => { _id => $biblio->biblionumber . q{} } };
-        push @bulk_body, { doc    => { embedding => $vector } };
-        $report->{success}++;
+        push @pending, { biblionumber => $biblio->biblionumber, text => $text };
+        $process_pending->() if @pending >= $batch_size;
         $self->step;
-
-        $flush_to_es->() if @bulk_body >= 200;    # 100 records × 2 lines each
     }
 
+    $process_pending->();
     $flush_to_es->();
 
     my $data = $self->decoded_data;
