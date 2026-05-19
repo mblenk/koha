@@ -16,18 +16,18 @@
                 <input type="text" name="q" id="search-form" size="20" title="Enter the terms you wish to search for." class="query form-text head-searchbox form-control" placeholder="Enter search keywords" />
             [% END %]
 
-            [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') || Koha.Preference('VectorSearchEnabled') %]
+            [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') %]
                 <button type="button" class="form-extra-content-toggle" title="More options"><i class="form-extra-content-icon fa-solid fa-sliders" aria-hidden="true"></i></button>
+            [% END %]
+            [% IF Koha.Preference('VectorSearchEnabled') %]
+                <button type="button" class="semantic-search-toggle" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal"
+                    ><i class="fa-solid fa-brain" aria-hidden="true"></i
+                ></button>
             [% END %]
         </div>
         <button type="submit" aria-label="Search"><i class="fa fa-arrow-right"></i></button>
 
         <div class="form-extra-content">
-            [% IF Koha.Preference('VectorSearchEnabled') %]
-                <div>
-                    <label><input type="checkbox" name="semantic" value="1" /> Semantic search</label>
-                </div>
-            [% END %]
             [% IF ( Koha.Preference('IntranetCatalogSearchPulldown') ) %]
                 <div>
                     <label for="idx">Search index</label>
@@ -47,4 +47,7 @@
         </div>
     </form>
 [% END # /tab_panel %]
+[% IF Koha.Preference('VectorSearchEnabled') %]
+    <semantic-search-modal search-url="/cgi-bin/koha/catalogue/search.pl"></semantic-search-modal>
+[% END %]
 <!-- /catalogue-search-box.inc -->

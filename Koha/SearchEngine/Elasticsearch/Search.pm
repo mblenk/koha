@@ -686,16 +686,15 @@ sub semantic_search {
     my $vector = Koha::SearchEngine::Embedder->new->embed($query_text);
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
-    my $k              = $results_per_page + $offset;
-    my $num_candidates = $opts{num_candidates} // ( $results_per_page * 10 );
-    $num_candidates = $k if $num_candidates < $k;
-
     my $body = {
-        knn => {
-            field          => 'embedding',
-            query_vector   => $vector,
-            k              => $k,
-            num_candidates => $num_candidates,
+        query => {
+            script_score => {
+                query  => { exists => { field => 'embedding' } },
+                script => {
+                    source => "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                    params => { query_vector => $vector },
+                },
+            },
         },
         size => $results_per_page,
         from => $offset,

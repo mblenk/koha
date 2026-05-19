@@ -280,10 +280,9 @@ sub get_elasticsearch_mappings {
                 my $provider = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
                 my $dims     = $provider ? $provider->dimensions : 768;
                 $mappings->{properties}{embedding} = {
-                    type       => 'dense_vector',
-                    dims       => int($dims),
-                    index      => \1,
-                    similarity => 'cosine',
+                    type  => 'dense_vector',
+                    dims  => int($dims),
+                    index => \0,
                 };
             } catch {
                 warn "Could not add embedding field to ES mappings: $_";

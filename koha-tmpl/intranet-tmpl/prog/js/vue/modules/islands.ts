@@ -101,6 +101,21 @@ export const componentRegistry: Map<string, WebComponentDynamicImport> =
                 config: {},
             },
         ],
+        [
+            "semantic-search-modal",
+            {
+                importFn: async () => {
+                    const module = await import(
+                        /* webpackChunkName: "semantic-search-modal" */
+                        "../components/Islands/SemanticSearchModal.vue"
+                    );
+                    return module.default;
+                },
+                config: {
+                    stores: [],
+                },
+            },
+        ],
     ]);
 
 /**

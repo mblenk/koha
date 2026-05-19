@@ -1018,13 +1018,6 @@
     <patron-self-renewal patron="[% borrowernumber | html %]"></patron-self-renewal>
 [% END %]
 
-[% SET islands = Asset.js("js/vue/dist/islands.esm.js").match('(src="([^"]+)")').1 %]
-<script src="[% islands | $raw %]" type="module">
-</script>
-<script nonce="[% Koha.CSPNonce | $raw %]" type="module">
-    import { hydrate } from "[% islands | $raw %]";
-    hydrate();
-</script>
 [%# hold suspend modal form %]
 <div id="suspendHoldModal" class="modal" tabindex="-1" role="dialog" aria-labelledby="suspendModalLabel" aria-hidden="true" data-focus="false">
     <div class="modal-dialog">

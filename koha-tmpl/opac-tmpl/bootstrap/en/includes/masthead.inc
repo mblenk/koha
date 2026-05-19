@@ -1,4 +1,5 @@
 [% USE raw %]
+[% USE Asset %]
 [% USE Koha %]
 [% USE Branches %]
 [% USE Categories %]
@@ -369,15 +370,20 @@
                                             <i class="fa fa-search" aria-hidden="true"></i>
                                         </button>
                                     </div>
+                                    [% IF Koha.Preference('VectorSearchEnabled') %]
+                                        <div class="col-sm-auto order-last">
+                                            <button type="button" class="btn btn-outline-secondary" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal">
+                                                <i class="fa-solid fa-brain" aria-hidden="true"></i>
+                                            </button>
+                                        </div>
+                                    [% END %]
                                 </div>
                                 <!-- /.form-row -->
                                 <input type="hidden" name="weight_search" value="1" />
-                                [% IF Koha.Preference('VectorSearchEnabled') %]
-                                    <div class="mt-1">
-                                        <label class="form-check-label"><input type="checkbox" class="form-check-input" name="semantic" value="1" /> Semantic search</label>
-                                    </div>
-                                [% END %]
                             </form>
+                            [% IF Koha.Preference('VectorSearchEnabled') %]
+                                <semantic-search-modal search-url="/cgi-bin/koha/opac-search.pl"></semantic-search-modal>
+                            [% END %]
                         [% END # / ( OpacCustomSearch ) %] </div
                     ><!-- /#opac-main-search -->
                 </div>
@@ -601,3 +607,10 @@
     </div>
     <!-- /#cookieConsentModal  -->
 [% END %]
+[% SET islands = Asset.js("js/vue/dist/islands.esm.js").match('(src="([^"]+)")').1 %]
+<script src="[% islands | $raw %]" type="module">
+</script>
+<script nonce="[% Koha.CSPNonce | $raw %]" type="module">
+    import { hydrate } from "[% islands | $raw %]";
+    hydrate();
+</script>
