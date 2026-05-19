@@ -21,6 +21,7 @@ use Modern::Perl;
 
 use Try::Tiny qw( catch try );
 
+use Koha::Biblios;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Elasticsearch;
 use Koha::SearchEngine::Embedder;
@@ -34,9 +35,24 @@ embeddings for bibliographic records
 
 This is a subclass of Koha::BackgroundJob.
 
-Each job takes a list of biblionumbers, generates an embedding for each record
-via L<Koha::SearchEngine::Embedder>, and updates the Elasticsearch document
-using a partial C<doc> update so the MARC data is never overwritten.
+Can operate in two modes:
+
+=over 4
+
+=item * B<Incremental> — takes a list of biblionumbers via C<record_ids> and
+embeds only those records. Used by the ES indexer daemon when individual
+records are saved.
+
+=item * B<Full rebuild> — iterates every biblio in the catalogue. Triggered
+when an embedding provider is activated or its configuration changes. Pass
+C<rebuild_all => 1> to C<enqueue> to use this mode. The search layer uses
+active full-rebuild jobs to detect when semantic search should be temporarily
+disabled.
+
+=back
+
+Embeddings are stored via a partial Elasticsearch C<doc> update so existing
+MARC data is never overwritten.
 
 =head1 API
 
@@ -50,10 +66,18 @@ sub job_type { return 'index_biblio_embeddings' }
 
 =head3 enqueue
 
-Enqueue a new embedding job.
+Enqueue an embedding job.
+
+Incremental (specific records):
 
     Koha::BackgroundJob::IndexBiblioEmbeddings->new->enqueue({
         record_ids => \@biblionumbers,
+    });
+
+Full rebuild (all records):
+
+    Koha::BackgroundJob::IndexBiblioEmbeddings->new->enqueue({
+        rebuild_all => 1,
     });
 
 =cut
@@ -61,22 +85,35 @@ Enqueue a new embedding job.
 sub enqueue {
     my ( $self, $args ) = @_;
 
-    return unless exists $args->{record_ids};
-    return unless ref( $args->{record_ids} ) eq 'ARRAY';
-    return unless @{ $args->{record_ids} };
+    if ( $args->{rebuild_all} ) {
+        my $job_size = Koha::Biblios->search->count;
+        return unless $job_size;
 
-    $self->SUPER::enqueue(
-        {
-            job_size  => scalar @{ $args->{record_ids} },
-            job_args  => { record_ids => $args->{record_ids} },
-            job_queue => 'long_tasks',
-        }
-    );
+        $self->SUPER::enqueue(
+            {
+                job_size  => $job_size,
+                job_args  => { rebuild_all => 1 },
+                job_queue => 'long_tasks',
+            }
+        );
+    } else {
+        return unless exists $args->{record_ids};
+        return unless ref( $args->{record_ids} ) eq 'ARRAY';
+        return unless @{ $args->{record_ids} };
+
+        $self->SUPER::enqueue(
+            {
+                job_size  => scalar @{ $args->{record_ids} },
+                job_args  => { record_ids => $args->{record_ids} },
+                job_queue => 'long_tasks',
+            }
+        );
+    }
 }
 
 =head3 process
 
-Process the job: generate and store embeddings for each biblionumber.
+Process the job: generate and store embeddings.
 
 =cut
 
@@ -87,16 +124,15 @@ sub process {
 
     $self->start;
 
-    my @record_ids = @{ $args->{record_ids} };
-    my $embedder   = Koha::SearchEngine::Embedder->new;
-    my $es_obj     = Koha::SearchEngine::Elasticsearch->new(
-        { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
-    my $es = $es_obj->get_elasticsearch;
+    my $embedder = Koha::SearchEngine::Embedder->new;
+    my $es_obj   = Koha::SearchEngine::Elasticsearch->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
+    my $es       = $es_obj->get_elasticsearch;
 
     my $report = {
-        total   => scalar @record_ids,
-        success => 0,
-        skipped => 0,
+        total     => $args->{rebuild_all} ? 0 : scalar @{ $args->{record_ids} // [] },
+        success   => 0,
+        skipped   => 0,
+        es_errors => 0,
     };
 
     my @bulk_body;
@@ -108,8 +144,18 @@ sub process {
                 index => $es_obj->index_name,
                 body  => \@bulk_body,
             );
-            warn "IndexBiblioEmbeddings: some ES bulk update errors occurred\n"
-                if $response->{errors};
+            if ( $response->{errors} ) {
+                my @failed     = grep { ( values %$_ )[0]{error} } @{ $response->{items} };
+                my $n_failed   = scalar @failed;
+                my $n_total    = scalar @{ $response->{items} };
+                my @failed_ids = map { ( values %$_ )[0]{_id} } @failed;
+                my $reason     = ( values %{ $failed[0] } )[0]{error}{reason} // 'unknown';
+                warn sprintf(
+                    "IndexBiblioEmbeddings: %d/%d ES bulk update(s) failed" . " (reason: %s; biblionumbers: %s)\n",
+                    $n_failed, $n_total, $reason, join( ', ', @failed_ids )
+                );
+                $report->{es_errors} += $n_failed;
+            }
         } catch {
             warn "IndexBiblioEmbeddings: ES bulk update failed: $_\n";
         };
@@ -128,7 +174,7 @@ sub process {
                 $report->{skipped}++;
                 next;
             }
-            push @bulk_body, { update => { _id => $pending[$i]{biblionumber} . q{} } };
+            push @bulk_body, { update => { _id       => $pending[$i]{biblionumber} . q{} } };
             push @bulk_body, { doc    => { embedding => $vector } };
             $report->{success}++;
         }
@@ -136,19 +182,42 @@ sub process {
         $flush_to_es->() if @bulk_body >= 200;
     };
 
-    for my $biblionumber ( sort { $a <=> $b } @record_ids ) {
-        last if $self->get_from_storage->status eq 'cancelled';
+    if ( $args->{rebuild_all} ) {
+        my $rs = Koha::Biblios->search(
+            {},
+            { order_by => { -asc => 'biblionumber' } }
+        );
+        while ( my $biblio = $rs->next ) {
+            last if $self->get_from_storage->status eq 'cancelled';
 
-        my $text = Koha::SearchEngine::Embedder->text_for_biblio($biblionumber);
-        unless ($text) {
-            $report->{skipped}++;
+            $report->{total}++;
+
+            my $text = $embedder->text_for_biblio( $biblio->biblionumber );
+            unless ($text) {
+                $report->{skipped}++;
+                $self->step;
+                next;
+            }
+
+            push @pending, { biblionumber => $biblio->biblionumber, text => $text };
+            $process_pending->() if @pending >= $batch_size;
             $self->step;
-            next;
         }
+    } else {
+        for my $biblionumber ( sort { $a <=> $b } @{ $args->{record_ids} } ) {
+            last if $self->get_from_storage->status eq 'cancelled';
 
-        push @pending, { biblionumber => $biblionumber, text => $text };
-        $process_pending->() if @pending >= $batch_size;
-        $self->step;
+            my $text = $embedder->text_for_biblio($biblionumber);
+            unless ($text) {
+                $report->{skipped}++;
+                $self->step;
+                next;
+            }
+
+            push @pending, { biblionumber => $biblionumber, text => $text };
+            $process_pending->() if @pending >= $batch_size;
+            $self->step;
+        }
     }
 
     $process_pending->();

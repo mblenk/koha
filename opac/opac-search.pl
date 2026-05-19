@@ -585,18 +585,24 @@ if ($tag) {
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
 } elsif ( $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled') ) {
-    my $embedding_reindex_in_progress =
-        Koha::BackgroundJobs->search(
-        { type => 'rebuild_all_embeddings', status => { -in => [qw(new started)] } }
-        )->count > 0;
+    my $embedding_reindex_in_progress = 0;
+    for my $job (
+        Koha::BackgroundJobs->search( { type => 'index_biblio_embeddings', status => { -in => [qw(new started)] } } )
+        ->as_list )
+    {
+        my $data = $job->decoded_data;
+        if ( $data && $data->{job_args} && $data->{job_args}{rebuild_all} ) {
+            $embedding_reindex_in_progress = 1;
+            last;
+        }
+    }
 
     if ($embedding_reindex_in_progress) {
         $template->param( embedding_reindex_in_progress => 1 );
     } else {
         eval {
-            ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
-                $operands[0] // '', $results_per_page, $offset
-            );
+            ( $error, $results_hashref, $facets ) =
+                $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
         };
     }
 } else {
@@ -620,7 +626,7 @@ if ( not $tag and ( $@ || $error ) ) {
     my $query_error = q{};
     $query_error .= $error if $error;
     $query_error .= $@     if $@;
-    $template->param( query_error => $query_error );
+    $template->param( query_error                   => $query_error );
     $template->param( embedding_reindex_in_progress => 0 );
     output_html_with_http_headers $cgi, $cookie, $template->output;
     exit;

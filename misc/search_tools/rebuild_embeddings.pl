@@ -80,6 +80,7 @@ use Koha::Biblios;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Elasticsearch;
 use Koha::SearchEngine::Embedder;
+use Koha::EmbeddingProviders;
 
 my ( $commit, $verbose, $help );
 my @bnumbers;
@@ -95,6 +96,9 @@ pod2usage(0) if $help;
 
 die "VectorSearchEnabled syspref is off — nothing to do\n"
     unless C4::Context->preference('VectorSearchEnabled');
+
+die "No active embedding provider configured — nothing to do\n"
+    unless Koha::EmbeddingProviders->search( { status => 'active' } )->count;
 
 my $embedder = Koha::SearchEngine::Embedder->new;
 my $es_obj   = Koha::SearchEngine::Elasticsearch->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
@@ -139,7 +143,7 @@ my $flush = sub {
 };
 
 while ( defined( my $biblionumber = $iterator->() ) ) {
-    my $text = Koha::SearchEngine::Embedder->text_for_biblio($biblionumber);
+    my $text = $embedder->text_for_biblio($biblionumber);
     unless ($text) {
         $skipped++;
         next;

@@ -543,18 +543,23 @@ my $semantic_mode = $cgi->param('semantic')
 
 my $embedding_reindex_in_progress = 0;
 if ($semantic_mode) {
-    $embedding_reindex_in_progress =
-        Koha::BackgroundJobs->search(
-        { type => 'rebuild_all_embeddings', status => { -in => [qw(new started)] } }
-        )->count > 0;
+    for my $job (
+        Koha::BackgroundJobs->search( { type => 'index_biblio_embeddings', status => { -in => [qw(new started)] } } )
+        ->as_list )
+    {
+        my $data = $job->decoded_data;
+        if ( $data && $data->{job_args} && $data->{job_args}{rebuild_all} ) {
+            $embedding_reindex_in_progress = 1;
+            last;
+        }
+    }
     $semantic_mode = 0 if $embedding_reindex_in_progress;
 }
 
 if ($semantic_mode) {
     eval {
-        ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
-            $operands[0] // '', $results_per_page, $offset
-        );
+        ( $error, $results_hashref, $facets ) =
+            $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
     };
 } else {
     eval {
@@ -571,7 +576,7 @@ if ( $@ || $error ) {
     my $query_error = q{};
     $query_error .= $error if $error;
     $query_error .= $@     if $@;
-    $template->param( query_error                 => $query_error );
+    $template->param( query_error                   => $query_error );
     $template->param( embedding_reindex_in_progress => $embedding_reindex_in_progress );
     output_html_with_http_headers $cgi, $cookie, $template->output;
     exit;

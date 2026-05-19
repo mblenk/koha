@@ -64,6 +64,7 @@ use Koha::BackgroundJobs;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Indexer;
 use Koha::BackgroundJob::IndexBiblioEmbeddings;
+use Koha::EmbeddingProviders;
 
 my $help;
 my $batch_size = 10;
@@ -253,11 +254,13 @@ sub commit {
         }
     }
     if (@bib_records) {
+        my $enqueue_embeddings = C4::Context->preference('VectorSearchEnabled')
+            && Koha::EmbeddingProviders->search( { status => 'active' } )->count;
         my $biblio_chunks = natatime $at_a_time, @bib_records;
         while ( ( my @bib_chunk = $biblio_chunks->() ) ) {
             try {
                 $biblio_indexer->update_index( \@bib_chunk );
-                if ( C4::Context->preference('VectorSearchEnabled') ) {
+                if ($enqueue_embeddings) {
                     Koha::BackgroundJob::IndexBiblioEmbeddings->new->enqueue( { record_ids => \@bib_chunk } );
                 }
             } catch {

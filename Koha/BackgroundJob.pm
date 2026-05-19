@@ -457,7 +457,6 @@ sub core_types_to_classes {
         import_from_kbart_file              => 'Koha::BackgroundJob::ImportKBARTFile',
         file_transport_test                 => 'Koha::BackgroundJob::TestTransport',
         index_biblio_embeddings             => 'Koha::BackgroundJob::IndexBiblioEmbeddings',
-        rebuild_all_embeddings              => 'Koha::BackgroundJob::RebuildAllEmbeddings',
     };
 }
 

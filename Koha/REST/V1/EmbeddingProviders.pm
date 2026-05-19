@@ -23,7 +23,7 @@ use Mojo::Base 'Mojolicious::Controller';
 
 use Koha::Encryption;
 use Koha::EmbeddingProviders;
-use Koha::BackgroundJob::RebuildAllEmbeddings;
+use Koha::BackgroundJob::IndexBiblioEmbeddings;
 use Koha::SearchEngine::Elasticsearch;
 
 use Scalar::Util qw( blessed );
@@ -172,7 +172,8 @@ sub config {
         my $es   = Koha::SearchEngine::Elasticsearch->new( { index => 'biblios' } );
         my $info = $es->get_elasticsearch->info;
         $es_major = int( ( split /\./, $info->{version}{number} )[0] );
-    } catch {};
+    } catch {
+    };
 
     return $c->render(
         status  => 200,
@@ -188,7 +189,7 @@ of 500. Called whenever an embedding provider is saved with status C<active>.
 =cut
 
 sub _enqueue_full_reindex {
-    Koha::BackgroundJob::RebuildAllEmbeddings->new->enqueue({});
+    Koha::BackgroundJob::IndexBiblioEmbeddings->new->enqueue( { rebuild_all => 1 } );
 }
 
 1;

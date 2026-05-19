@@ -50,6 +50,7 @@ use Koha::SearchEngine::QueryBuilder;
 use Koha::SearchEngine::Search;
 use Koha::Exceptions::Elasticsearch;
 use Koha::SearchEngine::Embedder;
+use Koha::EmbeddingProviders;
 use MARC::Record;
 use MARC::File::XML;
 use MIME::Base64 qw( decode_base64 );
@@ -679,6 +680,9 @@ sub semantic_search {
 
     return ( "VectorSearchEnabled is off", undef, [] )
         unless C4::Context->preference('VectorSearchEnabled');
+
+    return ( "No active embedding provider configured", undef, [] )
+        unless Koha::EmbeddingProviders->search( { status => 'active' } )->count;
 
     $results_per_page //= 20;
     $offset           //= 0;
