@@ -651,24 +651,36 @@ sub _aggregation_scan {
 =head2 semantic_search
 
     my ( $error, $results_hashref, $facets ) = $searcher->semantic_search(
-        $query_text, $results_per_page, $offset, %opts
+        $query_text, $results_per_page, $offset
     );
 
-Embeds C<$query_text> via L<Koha::SearchEngine::Embedder> and runs an
-Elasticsearch kNN search against the C<embedding> dense_vector field.
-
-Returns results in the same shape as L</search_compat> so CGI scripts can
-branch on a single flag without changing template variable names.
-
-Options:
+Embeds C<$query_text> via L<Koha::SearchEngine::Embedder> and runs a hybrid
+search against the C<embedding> dense_vector field. The query combines:
 
 =over 4
 
-=item C<num_candidates>
+=item Semantic similarity
 
-ES kNN num_candidates parameter. Defaults to C<$results_per_page * 10>.
+Cosine similarity between the query vector and each document's stored embedding,
+computed via an Elasticsearch C<script_score> query.
+
+=item Keyword relevance (BM25)
+
+A C<query_string> clause in the inner C<bool> query scores documents that
+contain query terms. The BM25 score is blended into the final score as
+C<Math.log1p(_score)>, keeping it in a comparable range to the cosine component
+without allowing strong keyword matches to overwhelm semantic relevance.
 
 =back
+
+All documents with a stored embedding are candidates regardless of whether they
+match any keyword (C<minimum_should_match> defaults to 0 when a C<must> clause
+is present). The combined score is:
+
+    cosineSimilarity(query_vector, embedding) + 1.0 + Math.log1p(bm25_score)
+
+Returns results in the same shape as L</search_compat> so CGI scripts can
+branch on a single flag without changing template variable names.
 
 Requires Elasticsearch 8.x and C<VectorSearchEnabled> to be set. Returns an
 error string (and C<undef> results) gracefully on any failure.
@@ -693,9 +705,19 @@ sub semantic_search {
     my $body = {
         query => {
             script_score => {
-                query  => { exists => { field => 'embedding' } },
+                query => {
+                    bool => {
+                        must   => { exists => { field => 'embedding' } },
+                        should => {
+                            query_string => {
+                                query   => $query_text,
+                                lenient => \1,
+                            },
+                        },
+                    },
+                },
                 script => {
-                    source => "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
+                    source => "cosineSimilarity(params.query_vector, 'embedding') + 1.0 + Math.log1p(_score)",
                     params => { query_vector => $vector },
                 },
             },
