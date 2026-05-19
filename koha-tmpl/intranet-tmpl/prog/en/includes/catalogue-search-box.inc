@@ -47,7 +47,5 @@
         </div>
     </form>
 [% END # /tab_panel %]
-[% IF Koha.Preference('VectorSearchEnabled') %]
-    <semantic-search-modal search-url="/cgi-bin/koha/catalogue/search.pl"></semantic-search-modal>
-[% END %]
+[% INCLUDE 'semantic-search-modal.inc' %]
 <!-- /catalogue-search-box.inc -->
