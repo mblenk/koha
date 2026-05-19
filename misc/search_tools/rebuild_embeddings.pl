@@ -149,7 +149,7 @@ while ( defined( my $biblionumber = $iterator->() ) ) {
         next;
     }
 
-    my $vector = $embedder->embed($text);
+    my $vector = $embedder->embed_document($text);
     unless ($vector) {
         $skipped++;
         warn "rebuild_embeddings: could not embed biblio $biblionumber\n" if $verbose;

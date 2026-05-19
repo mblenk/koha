@@ -10,14 +10,14 @@ import BaseResource from "../../BaseResource.vue";
 import { useBaseResource } from "../../../composables/base-resource.js";
 import { APIClient } from "../../../fetch/api-client.js";
 import { $__ } from "@koha-vue/i18n";
-import { onBeforeMount, ref } from 'vue';
+import { onBeforeMount, ref } from "vue";
 
 export default {
     props: {
         routeAction: String,
     },
     setup(props) {
-        const initialized = ref(false)
+        const initialized = ref(false);
         let esVersion = null;
         onBeforeMount(async () => {
             APIClient.embedding_providers.config.get().then(result => {
@@ -29,14 +29,16 @@ export default {
                         ).format(esVersion || "unknown")
                     );
                 }
-                initialized.value = true
+                initialized.value = true;
             });
-        })
+        });
 
         const defaultToolbarButtons = (defaultButtons, resource) => {
             return {
-                list: defaultButtons.list.filter(button => esVersion && esVersion >= 8 ),
-                show: defaultButtons.show
+                list: defaultButtons.list.filter(
+                    button => esVersion && esVersion >= 8
+                ),
+                show: defaultButtons.show,
             };
         };
 
@@ -167,6 +169,15 @@ export default {
                     hideIn: ["List", "Show"],
                 },
                 {
+                    name: "query_body_template",
+                    type: "json",
+                    label: $__("Query body template"),
+                    toolTip: $__(
+                        'Optional: JSON body template used when embedding search queries. Leave blank to use the request body template. Use this for asymmetric models that require different prefixes for documents and queries — e.g. {"model":"{{model}}","prompt":"search_query: {{text}}"}'
+                    ),
+                    hideIn: ["List", "Show"],
+                },
+                {
                     name: "response_payload",
                     type: "json",
                     label: $__("Example API response"),
@@ -268,10 +279,10 @@ export default {
             },
         };
 
-        let isProviderActive = false
+        let isProviderActive = false;
         const afterResourceFetch = (componentData, resource, caller) => {
             if (caller === "form") {
-                isProviderActive = resource.status === "active" ? true : false
+                isProviderActive = resource.status === "active" ? true : false;
             }
         };
 
@@ -279,19 +290,17 @@ export default {
             if (providerId) {
                 return baseResource.apiClient
                     .update(provider, providerId)
-                    .then((provider) => {
+                    .then(provider => {
                         baseResource.setMessage(
                             $__("Embedding provider updated!")
-                        )
-                        return provider
+                        );
+                        return provider;
                     });
             }
-            return baseResource.apiClient
-                .create(provider)
-                .then((provider) => {
-                    baseResource.setMessage($__("Embedding provider created!"))
-                    return provider
-                });
+            return baseResource.apiClient.create(provider).then(provider => {
+                baseResource.setMessage($__("Embedding provider created!"));
+                return provider;
+            });
         };
 
         const onFormSave = (e, embeddingProviderToSave) => {
@@ -304,7 +313,11 @@ export default {
             delete embeddingProvider.embedding_provider_id;
             delete embeddingProvider.response_payload;
 
-            if (embeddingProvider.status === "active" && esVersion !== null && esVersion < 8) {
+            if (
+                embeddingProvider.status === "active" &&
+                esVersion !== null &&
+                esVersion < 8
+            ) {
                 baseResource.setMessage(
                     $__(
                         "Cannot activate: Elasticsearch version %s detected. Version 8 or higher is required."
@@ -324,9 +337,7 @@ export default {
                                 "Saving this provider as active will trigger a full catalogue re-index. Semantic search will be disabled until the re-index is complete. Do you want to proceed?"
                             ),
                             accept_label: $__("Yes, save and re-index"),
-                            cancel_label: $__(
-                                "No (save provider as inactive)"
-                            ),
+                            cancel_label: $__("No (save provider as inactive)"),
                             cancel_callback: () => {
                                 embeddingProvider.status = "inactive";
                                 performSave(
@@ -347,7 +358,6 @@ export default {
             } else {
                 return performSave(embeddingProvider, embeddingProviderId);
             }
-
         };
 
         return {
@@ -355,7 +365,7 @@ export default {
             tableOptions,
             onFormSave,
             afterResourceFetch,
-            initialized
+            initialized,
         };
     },
     name: "EmbeddingProvidersResource",

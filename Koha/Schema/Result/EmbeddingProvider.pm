@@ -78,6 +78,13 @@ Whether to send an Authorization header
 
 JSON body template with {{text}} and {{model}} as sentinel values
 
+=head2 query_body_template
+
+  data_type: 'text'
+  is_nullable: 1
+
+Optional JSON body template used at search time; falls back to request_body_template when null
+
 =head2 response_key
 
   data_type: 'varchar'
@@ -141,6 +148,8 @@ __PACKAGE__->add_columns(
   },
   "request_body_template",
   { data_type => "text", is_nullable => 0 },
+  "query_body_template",
+  { data_type => "text", is_nullable => 1 },
   "response_key",
   {
     data_type => "varchar",
@@ -190,9 +199,29 @@ __PACKAGE__->set_primary_key("embedding_provider_id");
 __PACKAGE__->add_unique_constraint("name", ["name"]);
 
 
-# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-19 09:26:43
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:U+DWbr409kEGbW4bJk9ssg
+# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-19 14:17:07
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:89YJlGwkz70A43JV9k1cGA
 
+
+=head2 koha_object_class
+
+Missing POD for koha_object_class.
+
+=cut
+
+sub koha_object_class {
+    'Koha::EmbeddingProvider';
+}
+
+=head2 koha_objects_class
+
+Missing POD for koha_objects_class.
+
+=cut
+
+sub koha_objects_class {
+    'Koha::EmbeddingProviders';
+}
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
 1;

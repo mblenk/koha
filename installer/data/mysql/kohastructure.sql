@@ -5784,6 +5784,7 @@ CREATE TABLE `embedding_providers` (
   `api_key`               text         DEFAULT NULL COMMENT 'Bearer token for authentication',
   `auth_type`             enum('none','bearer') NOT NULL DEFAULT 'none' COMMENT 'Whether to send an Authorization header',
   `request_body_template` text         NOT NULL COMMENT 'JSON body template with {{text}} and {{model}} as sentinel values',
+  `query_body_template`   text         DEFAULT NULL COMMENT 'Optional JSON body template used at search time; falls back to request_body_template when null',
   `response_key`          varchar(255) NOT NULL DEFAULT 'data.0.embedding' COMMENT 'Dot-notation path to the embedding array in the response',
   `dimensions`            int(11)      NOT NULL DEFAULT 768 COMMENT 'Vector dimensionality',
   `status`                enum('active','inactive') NOT NULL DEFAULT 'inactive' COMMENT 'Only one provider may be active at a time',

@@ -28,6 +28,11 @@ properties:
   request_body_template:
     description: JSON body template with {{text}} and {{model}} as sentinel string values
     type: string
+  query_body_template:
+    description: Optional JSON body template used when embedding search queries; falls back to request_body_template when null
+    type:
+      - string
+      - "null"
   response_key:
     description: Dot-notation path to the embedding array in the response (e.g. data.0.embedding)
     type: string

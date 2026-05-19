@@ -687,7 +687,7 @@ sub semantic_search {
     $results_per_page //= 20;
     $offset           //= 0;
 
-    my $vector = Koha::SearchEngine::Embedder->new->embed($query_text);
+    my $vector = Koha::SearchEngine::Embedder->new->embed_query($query_text);
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
     my $body = {
