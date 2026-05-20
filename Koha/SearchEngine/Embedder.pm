@@ -29,7 +29,7 @@ Koha::SearchEngine::Embedder - data-driven text embedding client
     my $vector   = $embedder->embed_query("books about the French Revolution");
     # $vector is an arrayref of floats, or undef on failure
 
-    my $text = Koha::SearchEngine::Embedder->text_for_biblio($biblionumber);
+    my $text = $embedder->text_for_biblio($biblionumber);
 
 =head1 DESCRIPTION
 
@@ -71,7 +71,10 @@ as named arguments (presence of C<url> triggers the test bypass path):
     api_key               — bearer token (optional)
     auth_type             — 'none' or 'bearer' (default: 'none')
     request_body_template — JSON template with {{text}} and {{model}} sentinels
+    query_body_template   — optional separate template for query embeddings
     response_key          — dot-notation path to the embedding in the response
+    marc_fields_config    — hashref (or YAML string) with biblio_fields/marc_fields
+    batch_size            — number of texts per batch request (default: 1)
 
 Dies if no active provider is configured and no args are supplied.
 
@@ -98,8 +101,12 @@ sub new {
         my $record = Koha::EmbeddingProviders->search( { status => 'active' } )->next;
         die "Koha::SearchEngine::Embedder: No active embedding provider configured"
             unless $record;
-        $url                   = $record->url;
-        $model                 = $record->model;
+        $url   = $record->url;
+        $model = $record->model;
+        die "Koha::SearchEngine::Embedder: active provider has no URL configured"
+            unless $url;
+        die "Koha::SearchEngine::Embedder: active provider has no model configured"
+            unless $model;
         $api_key               = $record->plain_text_api_key // '';
         $auth_type             = $record->auth_type;
         $request_body_template = $record->request_body_template;
@@ -139,20 +146,23 @@ such as nomic-embed-text require different prefixes for queries vs. documents.
 
 =cut
 
+=head2 _truncate
+
+    my $text = _truncate( $text );
+
+Returns C<$text> truncated to C<MAX_TEXT_LENGTH> characters. No-op if already
+within the limit.
+
+=cut
+
+sub _truncate {
+    my ($text) = @_;
+    return length($text) > MAX_TEXT_LENGTH ? substr( $text, 0, MAX_TEXT_LENGTH ) : $text;
+}
+
 sub embed_query {
     my ( $self, $text ) = @_;
-    return undef unless defined $text && length $text;
-
-    $text = substr( $text, 0, MAX_TEXT_LENGTH ) if length($text) > MAX_TEXT_LENGTH;
-
-    my $vector = try {
-        $self->_do_embed( $text, $self->{_query_body_template} );
-    } catch {
-        warn "Koha::SearchEngine::Embedder: embedding failed: $_";
-        undef;
-    };
-
-    return $vector;
+    return $self->_embed( $text, $self->{_query_body_template}, 'query embedding failed' );
 }
 
 =head2 embed_document
@@ -172,18 +182,29 @@ For embedding search queries, use C<embed_query> instead.
 
 sub embed_document {
     my ( $self, $text ) = @_;
+    return $self->_embed( $text, undef, 'document embedding failed' );
+}
+
+=head2 _embed
+
+    my $vector = $self->_embed( $text, $template, $warn_label );
+
+Shared implementation for C<embed_query> and C<embed_document>. Guards against
+empty/undef input, truncates, and wraps C<_do_embed> in a try/catch that emits
+C<$warn_label> and returns C<undef> on any failure.
+
+=cut
+
+sub _embed {
+    my ( $self, $text, $template, $warn_label ) = @_;
     return undef unless defined $text && length $text;
-
-    $text = substr( $text, 0, MAX_TEXT_LENGTH ) if length($text) > MAX_TEXT_LENGTH;
-
-    my $vector = try {
-        $self->_do_embed( $text, undef );    # undef → uses _request_body_template
+    $text = _truncate($text);
+    return try {
+        $self->_do_embed( $text, $template );
     } catch {
-        warn "Koha::SearchEngine::Embedder: document embedding failed: $_";
+        warn "Koha::SearchEngine::Embedder: $warn_label: $_";
         undef;
     };
-
-    return $vector;
 }
 
 =head2 embed_batch
@@ -221,6 +242,7 @@ sub embed_batch {
             @chunk = ();
         }
     }
+
     # Captures any remaining texts that don't fall into the batch sizing.
     # E.g. batch_size = 10 but there are 12 texts, a batch of 10 will run
     # but leave 2 texts unprocessed as they don't trigger the next batch
@@ -229,10 +251,20 @@ sub embed_batch {
     return \@results;
 }
 
+=head2 _embed_chunk
+
+    my $vectors = $self->_embed_chunk( \@chunk );
+
+Tries C<_do_embed_batch> for the chunk. On any failure, warns and falls back to
+sequential C<embed_document> calls, preserving the N-in / N-out contract.
+
+=cut
+
 sub _embed_chunk {
     my ( $self, $chunk_ref ) = @_;
     my $vectors = try { $self->_do_embed_batch($chunk_ref) }
     catch {
+        warn "Koha::SearchEngine::Embedder: batch embedding failed, falling back to sequential: $_";
         [ map { $self->embed_document($_) } @$chunk_ref ]
     };
     return $vectors;
@@ -247,20 +279,36 @@ arrayref of embedding vectors. Dies on any failure so the caller can fall back.
 
 =cut
 
-sub _do_embed_batch {
-    my ( $self, $texts_ref ) = @_;
+=head2 _make_request
 
-    my @texts = map { length($_) > MAX_TEXT_LENGTH ? substr( $_, 0, MAX_TEXT_LENGTH ) : $_ } @$texts_ref;
+    my $response = $self->_make_request( $body );
 
-    my $body = $self->_build_batch_request_body( \@texts );
+Builds and sends a POST request to C<_url> with C<$body> as the JSON payload.
+Attaches a Bearer token when C<auth_type> is C<bearer>. Returns the raw
+C<HTTP::Response>.
 
+=cut
+
+sub _make_request {
+    my ( $self, $body ) = @_;
     my $req = HTTP::Request->new( POST => $self->{_url} );
     $req->content_type('application/json; charset=UTF-8');
     $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
         if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
     $req->content($body);
+    return $self->{_ua}->request($req);
+}
 
-    my $response = $self->{_ua}->request($req);
+sub _do_embed_batch {
+    my ( $self, $texts_ref ) = @_;
+
+    die "embed_batch: chunk contains undef or empty text"
+        if grep { !defined $_ || !length $_ } @$texts_ref;
+
+    my @texts = map { _truncate($_) } @$texts_ref;
+
+    my $body     = $self->_build_batch_request_body( \@texts );
+    my $response = $self->_make_request($body);
     die "HTTP " . $response->status_line unless $response->is_success;
 
     my $data       = decode_json( $response->decoded_content );
@@ -339,13 +387,16 @@ sub _resolve_batch_path {
 
 =head2 text_for_biblio
 
-    my $text = Koha::SearchEngine::Embedder->text_for_biblio( $biblionumber );
+    my $text = $embedder->text_for_biblio( $biblionumber );
 
-Builds the plain-text representation of a biblio record for embedding.
-Concatenates title, subtitle, author, subject headings (6XX $a), and abstract.
-Returns C<undef> if the record is not found or produces no content.
+Builds the plain-text representation of a biblio record for embedding using
+the field mapping from the embedder's C<marc_fields_config>. Returns C<undef>
+if the record is not found or produces no content.
 
-Can be called as either a class or instance method.
+Must be called as an instance method. The field selection (C<biblio_fields>,
+C<marc_fields>) is read from the provider's C<marc_fields_config>; calling
+on a class rather than an instance yields no field configuration and always
+returns C<undef>.
 
 =cut
 
@@ -364,7 +415,7 @@ sub text_for_biblio {
     }
 
     if ( @{ $config->{marc_fields} // [] } ) {
-        my $record = $biblio->metadata->record;
+        my $record = eval { $biblio->metadata->record };
         if ($record) {
             for my $spec ( @{ $config->{marc_fields} } ) {
                 for my $marc_field ( $record->field( $spec->{tag} ) ) {
@@ -386,8 +437,7 @@ sub text_for_biblio {
     return undef unless @parts;
 
     my $text = join( ' ', @parts );
-    $text = substr( $text, 0, MAX_TEXT_LENGTH ) if length($text) > MAX_TEXT_LENGTH;
-    return $text;
+    return _truncate($text);
 }
 
 =head2 _authority_variants
@@ -444,15 +494,8 @@ Dies on HTTP error, missing embedding, or JSON parse failure; the public callers
 sub _do_embed {
     my ( $self, $text, $template ) = @_;
 
-    my $body = $self->_build_request_body( $text, $template );
-
-    my $req = HTTP::Request->new( POST => $self->{_url} );
-    $req->content_type('application/json; charset=UTF-8');
-    $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
-        if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
-    $req->content($body);
-
-    my $response = $self->{_ua}->request($req);
+    my $body     = $self->_build_request_body( $text, $template );
+    my $response = $self->_make_request($body);
     die "HTTP " . $response->status_line unless $response->is_success;
 
     my $data      = decode_json( $response->decoded_content );
@@ -465,11 +508,12 @@ sub _do_embed {
 
 =head2 _build_request_body
 
-    my $json = $self->_build_request_body( $text );
+    my $json = $self->_build_request_body( $text, $template );
 
-Decodes the stored request body template as JSON, substitutes C<{{text}}>
-and C<{{model}}> sentinel string values with the actual text and model name,
-then re-encodes. All JSON escaping is handled by C<encode_json>.
+Decodes C<$template> as JSON (defaults to C<_request_body_template> when
+C<undef>), substitutes C<{{text}}> and C<{{model}}> sentinels with the actual
+text and model name, then re-encodes. All JSON escaping is handled by
+C<encode_json>.
 
 =cut
 
@@ -511,67 +555,62 @@ in-place with their scalar values.
 
 =cut
 
+=head2 _apply_subs
+
+    my $result = _apply_subs( $val, \%subs );
+
+Applies sentinel substitutions to a single string value. See
+C<_substitute_sentinels> for the three-mode priority order (exact match,
+array expansion, scalar substring).
+
+=cut
+
+sub _apply_subs {
+    my ( $val, $subs ) = @_;
+    $val //= '';
+
+    return $subs->{$val} if exists $subs->{$val};
+
+    for my $sentinel ( keys %$subs ) {
+        if ( ref( $subs->{$sentinel} ) eq 'ARRAY' && index( $val, $sentinel ) >= 0 ) {
+            return [
+                map {
+                    my $v = $val;
+                    $v =~ s/\Q$sentinel\E/$_/g;
+                    for my $s ( keys %$subs ) {
+                        next if ref( $subs->{$s} );
+                        $v =~ s/\Q$s\E/$subs->{$s}/g;
+                    }
+                    $v
+                } @{ $subs->{$sentinel} }
+            ];
+        }
+    }
+
+    for my $sentinel ( keys %$subs ) {
+        next if ref( $subs->{$sentinel} );
+        $val =~ s/\Q$sentinel\E/$subs->{$sentinel}/g;
+    }
+    return $val;
+}
+
 sub _substitute_sentinels {
     my ( $node, $subs ) = @_;
 
     if ( ref($node) eq 'HASH' ) {
         for my $key ( keys %$node ) {
-            if ( !ref( $node->{$key} ) ) {
-                my $val = $node->{$key} // '';
-                if ( exists $subs->{$val} ) {
-                    $node->{$key} = $subs->{$val};
-                } else {
-                    my $expanded = 0;
-                    for my $sentinel ( keys %$subs ) {
-                        if ( ref( $subs->{$sentinel} ) eq 'ARRAY' && index( $val, $sentinel ) >= 0 ) {
-                            $node->{$key} = [
-                                map { ( my $v = $val ) =~ s/\Q$sentinel\E/$_/g; $v }
-                                    @{ $subs->{$sentinel} }
-                            ];
-                            $expanded = 1;
-                            last;
-                        }
-                    }
-                    unless ($expanded) {
-                        for my $sentinel ( keys %$subs ) {
-                            next if ref( $subs->{$sentinel} );
-                            $val =~ s/\Q$sentinel\E/$subs->{$sentinel}/g;
-                        }
-                        $node->{$key} = $val;
-                    }
-                }
-            } else {
+            if ( ref( $node->{$key} ) ) {
                 _substitute_sentinels( $node->{$key}, $subs );
+            } else {
+                $node->{$key} = _apply_subs( $node->{$key}, $subs );
             }
         }
     } elsif ( ref($node) eq 'ARRAY' ) {
         for my $i ( 0 .. $#$node ) {
-            if ( !ref( $node->[$i] ) ) {
-                my $val = $node->[$i] // '';
-                if ( exists $subs->{$val} ) {
-                    $node->[$i] = $subs->{$val};
-                } else {
-                    my $expanded = 0;
-                    for my $sentinel ( keys %$subs ) {
-                        if ( ref( $subs->{$sentinel} ) eq 'ARRAY' && index( $val, $sentinel ) >= 0 ) {
-                            $node->[$i] = [
-                                map { ( my $v = $val ) =~ s/\Q$sentinel\E/$_/g; $v }
-                                    @{ $subs->{$sentinel} }
-                            ];
-                            $expanded = 1;
-                            last;
-                        }
-                    }
-                    unless ($expanded) {
-                        for my $sentinel ( keys %$subs ) {
-                            next if ref( $subs->{$sentinel} );
-                            $val =~ s/\Q$sentinel\E/$subs->{$sentinel}/g;
-                        }
-                        $node->[$i] = $val;
-                    }
-                }
-            } else {
+            if ( ref( $node->[$i] ) ) {
                 _substitute_sentinels( $node->[$i], $subs );
+            } else {
+                $node->[$i] = _apply_subs( $node->[$i], $subs );
             }
         }
     }
