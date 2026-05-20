@@ -667,8 +667,9 @@ if ( $total == 1 && !$scan && C4::Context->preference('RedirectToSoleResult') ) 
 # set up parameters if user wishes to re-run the search
 # as a Z39.50 search
 $template->param( z3950_search_params => C4::Search::z3950_search_args( $z3950par || $query_desc ) );
-$template->param( limit_cgi           => $limit_cgi );
-$template->param( query_cgi           => $query_cgi );
+$query_cgi .= '&semantic=1' if $semantic_mode;
+$template->param( limit_cgi => $limit_cgi );
+$template->param( query_cgi => $query_cgi );
 $template->param(
     query_json => encode_json(
         {

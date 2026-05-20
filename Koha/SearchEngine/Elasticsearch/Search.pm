@@ -679,6 +679,9 @@ is present). The combined score is:
 
     cosineSimilarity(query_vector, embedding) + 1.0 + Math.log1p(bm25_score)
 
+Results are then limited to those with a score of 1.5 or higher to only return
+results with relevance to the search query.
+
 Returns results in the same shape as L</search_compat> so CGI scripts can
 branch on a single flag without changing template variable names.
 
@@ -699,15 +702,22 @@ sub semantic_search {
     $results_per_page //= 20;
     $offset           //= 0;
 
+    my $max_window = $self->max_result_window;
+    if ( $offset + $results_per_page > $max_window ) {
+        $results_per_page = $max_window - $offset;
+        $results_per_page = 0 if $results_per_page < 0;
+    }
+
     my $vector = Koha::SearchEngine::Embedder->new->embed_query($query_text);
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
     my $body = {
-        query => {
+        min_score => 1.5,
+        query     => {
             script_score => {
                 query => {
                     bool => {
-                        must   => { exists => { field => 'embedding' } },
+                        filter => { exists => { field => 'embedding' } },
                         should => {
                             query_string => {
                                 query   => $query_text,

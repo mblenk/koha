@@ -850,12 +850,13 @@ for ( my $i = 0 ; $i < @servers ; $i++ ) {
             my $limit_cgi_not_availablity = $limit_cgi;
             $limit_cgi_not_availablity =~ s/&limit=available//g if defined $limit_cgi_not_availablity;
             $template->param( limit_cgi_not_availablity => $limit_cgi_not_availablity );
-            $template->param( limit_cgi                 => $limit_cgi );
-            $template->param( countrss                  => $countRSS );
-            $template->param( query_cgi                 => $query_cgi );
-            $template->param( query_desc                => $query_desc );
-            $template->param( limit_desc                => $limit_desc );
-            $template->param( offset                    => $offset );
+            $query_cgi .= '&semantic=1' if $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled');
+            $template->param( limit_cgi  => $limit_cgi );
+            $template->param( countrss   => $countRSS );
+            $template->param( query_cgi  => $query_cgi );
+            $template->param( query_desc => $query_desc );
+            $template->param( limit_desc => $limit_desc );
+            $template->param( offset     => $offset );
 
             if ( $query_desc || $limit_desc ) {
                 $template->param( searchdesc => 1 );
