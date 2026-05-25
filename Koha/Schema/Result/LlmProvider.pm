@@ -1,12 +1,12 @@
 use utf8;
-package Koha::Schema::Result::EmbeddingProvider;
+package Koha::Schema::Result::LlmProvider;
 
 # Created by DBIx::Class::Schema::Loader
 # DO NOT MODIFY THE FIRST PART OF THIS FILE
 
 =head1 NAME
 
-Koha::Schema::Result::EmbeddingProvider
+Koha::Schema::Result::LlmProvider
 
 =cut
 
@@ -15,21 +15,21 @@ use warnings;
 
 use base 'DBIx::Class::Core';
 
-=head1 TABLE: C<embedding_providers>
+=head1 TABLE: C<llm_providers>
 
 =cut
 
-__PACKAGE__->table("embedding_providers");
+__PACKAGE__->table("llm_providers");
 
 =head1 ACCESSORS
 
-=head2 embedding_provider_id
+=head2 llm_provider_id
 
   data_type: 'integer'
   is_auto_increment: 1
   is_nullable: 0
 
-Primary key for the embedding_providers table
+Primary key for the llm_providers table
 
 =head2 name
 
@@ -45,7 +45,7 @@ Admin-given label for this provider configuration
   is_nullable: 0
   size: 500
 
-Full endpoint URL for the embedding API
+Full endpoint URL for the chat completions API
 
 =head2 model
 
@@ -76,31 +76,23 @@ Whether to send an Authorization header
   data_type: 'text'
   is_nullable: 0
 
-JSON body template with {{text}} and {{model}} as sentinel values
-
-=head2 query_body_template
-
-  data_type: 'text'
-  is_nullable: 1
-
-Optional JSON body template used at search time; falls back to request_body_template when null
+JSON body template with {{model}}, {{messages}}, and {{system_prompt}} as sentinel values
 
 =head2 response_key
 
   data_type: 'varchar'
-  default_value: 'data.0.embedding'
+  default_value: 'choices.0.message.content'
   is_nullable: 0
   size: 255
 
-Dot-notation path to the embedding array in the response
+Dot-notation path to the reply text in the response
 
-=head2 dimensions
+=head2 system_prompt
 
-  data_type: 'integer'
-  default_value: 768
-  is_nullable: 0
+  data_type: 'text'
+  is_nullable: 1
 
-Vector dimensionality
+System prompt injected at the start of every conversation
 
 =head2 status
 
@@ -111,25 +103,10 @@ Vector dimensionality
 
 Only one provider may be active at a time
 
-=head2 marc_fields_config
-
-  data_type: 'text'
-  is_nullable: 1
-
-YAML configuration of biblio/MARC fields used by text_for_biblio
-
-=head2 batch_size
-
-  data_type: 'integer'
-  default_value: 1
-  is_nullable: 0
-
-Number of texts to send per API call (1 = no batching)
-
 =cut
 
 __PACKAGE__->add_columns(
-  "embedding_provider_id",
+  "llm_provider_id",
   { data_type => "integer", is_auto_increment => 1, is_nullable => 0 },
   "name",
   { data_type => "varchar", is_nullable => 0, size => 255 },
@@ -148,17 +125,15 @@ __PACKAGE__->add_columns(
   },
   "request_body_template",
   { data_type => "text", is_nullable => 0 },
-  "query_body_template",
-  { data_type => "text", is_nullable => 1 },
   "response_key",
   {
     data_type => "varchar",
-    default_value => "data.0.embedding",
+    default_value => "choices.0.message.content",
     is_nullable => 0,
     size => 255,
   },
-  "dimensions",
-  { data_type => "integer", default_value => 768, is_nullable => 0 },
+  "system_prompt",
+  { data_type => "text", is_nullable => 1 },
   "status",
   {
     data_type => "enum",
@@ -166,23 +141,19 @@ __PACKAGE__->add_columns(
     extra => { list => ["active", "inactive"] },
     is_nullable => 0,
   },
-  "marc_fields_config",
-  { data_type => "text", is_nullable => 1 },
-  "batch_size",
-  { data_type => "integer", default_value => 1, is_nullable => 0 },
 );
 
 =head1 PRIMARY KEY
 
 =over 4
 
-=item * L</embedding_provider_id>
+=item * L</llm_provider_id>
 
 =back
 
 =cut
 
-__PACKAGE__->set_primary_key("embedding_provider_id");
+__PACKAGE__->set_primary_key("llm_provider_id");
 
 =head1 UNIQUE CONSTRAINTS
 
@@ -200,28 +171,8 @@ __PACKAGE__->add_unique_constraint("name", ["name"]);
 
 
 # Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-25 12:59:13
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:mu6RBZTYrU5eO5KdFOeRWw
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Um2mbOWffOzrfq/0f6JZEg
 
-
-=head2 koha_object_class
-
-Missing POD for koha_object_class.
-
-=cut
-
-sub koha_object_class {
-    'Koha::EmbeddingProvider';
-}
-
-=head2 koha_objects_class
-
-Missing POD for koha_objects_class.
-
-=cut
-
-sub koha_objects_class {
-    'Koha::EmbeddingProviders';
-}
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
 1;
