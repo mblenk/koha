@@ -383,7 +383,7 @@
                                 <input type="hidden" name="weight_search" value="1" />
                             </form>
                             [% IF Koha.Preference('VectorSearchEnabled') %]
-                                <semantic-search-modal search-url="/cgi-bin/koha/opac-search.pl"></semantic-search-modal>
+                                <semantic-search-modal search-url="/cgi-bin/koha/opac-search.pl" llm-available="[% BackgroundJob.LLMProviderActive | html %]"></semantic-search-modal>
                             [% END %]
                         [% END # / ( OpacCustomSearch ) %] </div
                     ><!-- /#opac-main-search -->

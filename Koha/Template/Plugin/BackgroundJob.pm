@@ -23,6 +23,7 @@ use Template::Plugin;
 use base qw( Template::Plugin );
 
 use Koha::BackgroundJob::IndexBiblioEmbeddings;
+use Koha::LLMProviders;
 
 =head1 NAME
 
@@ -32,6 +33,7 @@ Koha::Template::Plugin::BackgroundJob - TT plugin for background job state queri
 
     [% USE BackgroundJob %]
     [% IF BackgroundJob.EmbeddingReindexInProgress %]
+    [% IF BackgroundJob.LLMProviderActive %]
 
 =head1 API
 
@@ -46,6 +48,16 @@ Returns true when an C<index_biblio_embeddings> full-rebuild job is active
 
 sub EmbeddingReindexInProgress {
     return Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress;
+}
+
+=head3 LLMProviderActive
+
+Returns true when at least one LLM provider has C<status = active>.
+
+=cut
+
+sub LLMProviderActive {
+    return Koha::LLMProviders->search( { status => 'active' } )->count ? 1 : 0;
 }
 
 1;
