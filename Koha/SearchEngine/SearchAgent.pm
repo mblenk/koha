@@ -110,10 +110,11 @@ sub converse {
     my $query   = $args{query}   // '';
     my $history = $args{history} // [];
 
-    my $results = $self->_run_search($query);
-    my $context = $self->_format_context( $query, $results );
-
     my $client = Koha::SearchEngine::LLMClient->new;
+
+    my $search_query = $self->_normalise_query( $query, $client );
+    my $results      = $self->_run_search($search_query);
+    my $context      = $self->_format_context( $query, $results );
 
     my $extra         = $client->system_prompt // '';
     my $system_prompt = CATALOGUE_PREAMBLE;
@@ -129,6 +130,7 @@ sub converse {
 
     my @updated_history = (
         @$history,
+        { role => 'user',      content => $query },
         { role => 'assistant', content => $reply },
     );
 
@@ -167,6 +169,42 @@ sub _run_search {
         push @search_results, _record_summary($record);
     }
     return \@search_results;
+}
+
+=head2 _normalise_query
+
+    my $search_query = $self->_normalise_query( $query, $client );
+
+Extracts the core subject-matter keywords from a conversational query by
+calling the LLM with a focused extraction prompt. Returns the original C<$query>
+unchanged if the query is already concise (four words or fewer) or if the LLM
+call fails.
+
+=cut
+
+sub _normalise_query {
+    my ( $self, $query, $client ) = @_;
+
+    my @words = split /\s+/, $query;
+    return $query if @words <= 4;
+
+    my $system =
+          'You extract the core subject matter from a library catalogue search query '
+        . 'as a short, natural search phrase. '
+        . 'Remove conversational filler such as "I want to learn about", "Can you show me", '
+        . '"I\'m looking for", "I need information on", "find me", "show me", etc. '
+        . 'Remove generic library terms: "books", "articles", "resources", "materials", "titles". '
+        . 'Return a concise natural phrase that captures the topic — not a comma-separated list. '
+        . 'Return only the phrase, no explanation, no trailing punctuation.';
+
+    my $normalised = $client->chat(
+        [ { role => 'user', content => $query } ],
+        $system,
+    );
+    $normalised =~ s/\n.*//s;
+    $normalised =~ s/^\s+|\s+$//g;
+    $normalised =~ s/[.!?,;:]+$//;
+    return ( defined $normalised && length $normalised ) ? $normalised : $query;
 }
 
 =head2 _record_summary

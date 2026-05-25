@@ -6,7 +6,7 @@
         aria-labelledby="semanticSearchModalLabel"
         aria-hidden="true"
     >
-        <div :class="['modal-dialog', isLlmAvailable ? 'modal-lg' : '']">
+        <div :class="['modal-dialog', isLlmAvailable ? 'modal-xl' : '']">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 id="semanticSearchModalLabel" class="modal-title">
@@ -245,6 +245,10 @@ export default {
             results.value = [];
             query.value = "";
 
+            const historyPayload = conversation.value.map(
+                ({ role, content }) => ({ role, content })
+            );
+
             conversation.value = [
                 ...conversation.value,
                 { role: "user", content: messageQuery },
@@ -258,32 +262,17 @@ export default {
             try {
                 const data = await APIClient.search.search_agent.converse(
                     messageQuery,
-                    conversation.value.map(({ role, content }) => ({
-                        role,
-                        content,
-                    })),
+                    historyPayload,
                     searchLocation
                 );
-                const updatedConversation = data.conversation || [];
-
-                const savedUrls = new Map(
-                    conversation.value
-                        .map((m, i) => [i, m.search_url])
-                        .filter(([, url]) => url)
-                );
-                savedUrls.forEach((url, i) => {
-                    if (updatedConversation[i]?.role === "assistant") {
-                        updatedConversation[i].search_url = url;
-                    }
-                });
-
-                if (data.search_url && updatedConversation.length) {
-                    const last =
-                        updatedConversation[updatedConversation.length - 1];
-                    if (last.role === "assistant")
-                        last.search_url = data.search_url;
-                }
-                conversation.value = updatedConversation;
+                conversation.value = [
+                    ...conversation.value,
+                    {
+                        role: "assistant",
+                        content: data.reply,
+                        search_url: data.search_url || null,
+                    },
+                ];
                 results.value = data.results || [];
             } catch (e) {
                 errorMsg.value = $__(
