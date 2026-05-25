@@ -1,0 +1,25 @@
+---
+type: object
+properties:
+  query:
+    description: The user's search query
+    type: string
+  conversation:
+    description: Conversation history (array of role/content message objects)
+    type: array
+    items:
+      type: object
+      properties:
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+      required: [role, content]
+  interface:
+    description: Interface context (intranet or opac)
+    type: string
+    enum: [intranet, opac]
+required:
+  - query
+additionalProperties: false

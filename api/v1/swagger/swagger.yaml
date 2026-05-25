@@ -56,6 +56,12 @@ definitions:
     $ref: ./definitions/embedding_provider.yaml
   embedding_providers_config:
     $ref: ./definitions/embedding_providers_config.yaml
+  llm_provider:
+    $ref: ./definitions/llm_provider.yaml
+  search_agent_request:
+    $ref: ./definitions/search_agent_request.yaml
+  search_agent_response:
+    $ref: ./definitions/search_agent_response.yaml
   erm_config:
     $ref: ./definitions/erm_config.yaml
   erm_agreement:
@@ -383,6 +389,12 @@ paths:
     $ref: ./paths/embedding_providers.yaml#/~1embedding_providers
   "/embedding_providers/{embedding_provider_id}":
     $ref: "./paths/embedding_providers.yaml#/~1embedding_providers~1{embedding_provider_id}"
+  /llm_providers:
+    $ref: ./paths/llm_providers.yaml#/~1llm_providers
+  "/llm_providers/{llm_provider_id}":
+    $ref: "./paths/llm_providers.yaml#/~1llm_providers~1{llm_provider_id}"
+  "/public/search/agent":
+    $ref: "./paths/search_agent.yaml#/~1public~1search~1agent"
   /erm/config:
     $ref: ./paths/erm_config.yaml#/~1erm~1config
   /erm/agreements:
@@ -933,6 +945,12 @@ parameters:
     name: embedding_provider_id
     required: true
     type: integer
+  llm_provider_id_pp:
+    description: Internal LLM provider identifier
+    in: path
+    name: llm_provider_id
+    required: true
+    type: integer
   record_source_id_pp:
     description: Internal record source identifier
     in: path
@@ -1443,6 +1461,12 @@ tags:
   - description: "Manage embedding providers\n"
     name: embedding_providers
     x-displayName: Embedding provider
+  - description: "Manage LLM providers\n"
+    name: llm_providers
+    x-displayName: LLM providers
+  - description: "Conversational search agent\n"
+    name: search
+    x-displayName: Search agent
   - description: "Manage record sources\n"
     name: record_sources
     x-displayName: Record source

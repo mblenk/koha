@@ -1,0 +1,34 @@
+---
+type: object
+properties:
+  reply:
+    description: Natural-language reply from the LLM
+    type: string
+  results:
+    description: Top search results used as context
+    type: array
+    items:
+      type: object
+      properties:
+        biblio_id:
+          type: integer
+        title:
+          type: string
+        author:
+          type: string
+        publication_year:
+          type: string
+  conversation:
+    description: Updated conversation history including this turn
+    type: array
+    items:
+      type: object
+      properties:
+        role:
+          type: string
+        content:
+          type: string
+  search_url:
+    description: URL to view full results for the current query
+    type: string
+additionalProperties: false

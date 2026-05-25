@@ -1,0 +1,48 @@
+/public/search/agent:
+  post:
+    x-mojo-to: Search::Agent#converse
+    operationId: searchAgentConverse
+    summary: Run a conversational search agent turn
+    tags:
+      - search
+    parameters:
+      - name: body
+        in: body
+        description: Query, conversation history, and interface context
+        required: true
+        schema:
+          $ref: "../swagger.yaml#/definitions/search_agent_request"
+    consumes:
+      - application/json
+    produces:
+      - application/json
+    responses:
+      "200":
+        description: Agent reply with top results and updated conversation
+        schema:
+          $ref: "../swagger.yaml#/definitions/search_agent_response"
+      "400":
+        description: Bad request
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "401":
+        description: Authentication required
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "503":
+        description: |
+          Service unavailable. Possible causes:
+
+          * VectorSearchEnabled is off
+          * No active embedding provider configured
+          * No active LLM provider configured
+          * LLM call failed
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
+      "500":
+        description: |
+          Internal server error. Possible `error_code` attribute values:
+
+          * `internal_server_error`
+        schema:
+          $ref: "../swagger.yaml#/definitions/error"
