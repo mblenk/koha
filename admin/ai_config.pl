@@ -27,7 +27,7 @@ my $query = CGI->new;
 
 my ( $template, $loggedinuser, $cookie ) = get_template_and_user(
     {
-        template_name => "admin/embedding_providers.tt",
+        template_name => "admin/ai_config.tt",
         query         => $query,
         type          => "intranet",
         flagsrequired => { parameters => 'manage_sysprefs' },

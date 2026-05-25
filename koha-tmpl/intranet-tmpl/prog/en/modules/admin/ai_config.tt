@@ -9,7 +9,7 @@
 [% INCLUDE 'doc-head-open.inc' %]
 <title
     >[% FILTER collapse %]
-        [% t("Embedding providers") | html %]
+        [% t("AI configuration") | html %]
         &rsaquo; [% t("Administration") | html %] &rsaquo; [% t("Koha") | html %]
     [% END %]</title
 >
@@ -18,7 +18,7 @@
 [% Asset.css("lib/codemirror/lint.css") | $raw %]
 </head>
 
-<body id="embedding_providers" class="embedding_providers">
+<body id="ai_config" class="ai_config">
 [% WRAPPER 'header.inc' %]
     [% INCLUDE 'prefs-admin-search.inc' %]
 [% END %]
@@ -28,7 +28,7 @@
 [% END #/ WRAPPER sub-header.inc %]
 
 [% WRAPPER 'main-container.inc' aside='admin-menu' %]
-    <div id="embedding-provider"></div>
+    <div id="ai-config"></div>
 [% END #/ WRAPPER main-container.inc %]
 
 [% MACRO jsinclude BLOCK %]
@@ -42,7 +42,7 @@
     [% Asset.js("lib/codemirror/yaml.min.js") | $raw %]
     [% Asset.js("lib/codemirror/yaml-lint.min.js") | $raw %]
     [% Asset.js("js/admin-menu.js") | $raw %]
-    [% Asset.js("js/vue/dist/admin/embedding_providers.js") | $raw %]
+    [% Asset.js("js/vue/dist/admin/ai_config.js") | $raw %]
 [% END %]
 
 [% INCLUDE 'intranet-bottom.inc' %]

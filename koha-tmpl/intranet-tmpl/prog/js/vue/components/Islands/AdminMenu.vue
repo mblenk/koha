@@ -314,8 +314,8 @@
                 >
                     <a
                         :ref="el => templateRefs.push(el)"
-                        href="/cgi-bin/koha/admin/embedding_providers"
-                        >{{ $__("Embedding providers") }}</a
+                        href="/cgi-bin/koha/admin/ai_config"
+                        >{{ $__("AI configuration") }}</a
                     >
                 </li>
                 <li v-if="can_user_parameters_manage_marc_overlay_rules">

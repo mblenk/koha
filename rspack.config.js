@@ -117,9 +117,9 @@ module.exports = [
                 "./koha-tmpl/intranet-tmpl/prog/js/vue/csp-nonce.js",
                 "./koha-tmpl/intranet-tmpl/prog/js/vue/modules/preservation.ts",
             ],
-            "admin/embedding_providers": [
+            "admin/ai_config": [
                 "./koha-tmpl/intranet-tmpl/prog/js/vue/csp-nonce.js",
-                "./koha-tmpl/intranet-tmpl/prog/js/vue/modules/admin/embedding_providers.ts",
+                "./koha-tmpl/intranet-tmpl/prog/js/vue/modules/admin/ai_config.ts",
             ],
             "admin/record_sources": [
                 "./koha-tmpl/intranet-tmpl/prog/js/vue/csp-nonce.js",

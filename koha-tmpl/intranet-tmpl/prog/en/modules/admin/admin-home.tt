@@ -210,7 +210,7 @@
                         <dd>Define record sources to import from</dd>
                     [% END %]
                     [% IF ( Koha.Preference('VectorSearchEnabled') && CAN_user_parameters_manage_sysprefs ) %]
-                        <dt><a href="/cgi-bin/koha/admin/embedding_providers">Embedding providers</a></dt>
+                        <dt><a href="/cgi-bin/koha/admin/ai_config">Embedding providers</a></dt>
                         <dd>Configure embedding providers for vector/semantic search</dd>
                     [% END %]
                     [% IF ( CAN_user_parameters_manage_marc_overlay_rules ) %]

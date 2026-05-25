@@ -16,7 +16,7 @@ import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
 import vSelect from "vue-select";
 import { useNavigationStore } from "../../stores/navigation";
 import { useMainStore } from "../../stores/main";
-import routesDef from "../../routes/admin/embedding_providers";
+import routesDef from "../../routes/admin/ai_config";
 
 library.add(faPlus, faMinus, faPencil, faTrash, faSpinner);
 
@@ -33,7 +33,7 @@ const router = createRouter({
     routes,
 });
 
-import App from "../../components/Admin/EmbeddingProviders/Main.vue";
+import App from "../../components/Admin/AIConfig/Main.vue";
 
 import "../../../../css/vue.css";
 
@@ -51,7 +51,7 @@ const rootComponent = app
 app.config.unwrapInjectedRef = true;
 app.provide("mainStore", mainStore);
 app.provide("navigationStore", navigationStore);
-app.mount("#embedding-provider");
+app.mount("#ai-config");
 
 router.beforeEach(to => {
     navigationStore.$patch({ current: to.matched, params: to.params || {} });
