@@ -45,6 +45,8 @@ Returns C<undef> silently on any failure so callers can degrade gracefully.
 
 use Modern::Perl;
 
+use parent qw(Koha::SearchEngine::ProviderClient);
+
 use Try::Tiny qw( catch try );
 use LWP::UserAgent;
 use HTTP::Request;
@@ -279,25 +281,6 @@ arrayref of embedding vectors. Dies on any failure so the caller can fall back.
 
 =cut
 
-=head2 _make_request
-
-    my $response = $self->_make_request( $body );
-
-Builds and sends a POST request to C<_url> with C<$body> as the JSON payload.
-Attaches a Bearer token when C<auth_type> is C<bearer>. Returns the raw
-C<HTTP::Response>.
-
-=cut
-
-sub _make_request {
-    my ( $self, $body ) = @_;
-    my $req = HTTP::Request->new( POST => $self->{_url} );
-    $req->content_type('application/json; charset=UTF-8');
-    $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
-        if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
-    $req->content($body);
-    return $self->{_ua}->request($req);
-}
 
 sub _do_embed_batch {
     my ( $self, $texts_ref ) = @_;
@@ -341,7 +324,7 @@ sub _build_batch_request_body {
         '{{text}}'  => $texts_ref,
         '{{model}}' => $self->{_model},
     );
-    _substitute_sentinels( $structure, \%subs );
+    $self->_substitute_sentinels( $structure, \%subs );
     return encode_json($structure);
 }
 
@@ -526,115 +509,8 @@ sub _build_request_body {
         '{{text}}'  => $text,
         '{{model}}' => $self->{_model},
     );
-    _substitute_sentinels( $structure, \%subs );
+    $self->_substitute_sentinels( $structure, \%subs );
     return encode_json($structure);
-}
-
-=head2 _substitute_sentinels
-
-    _substitute_sentinels( $node, \%subs );
-
-Recursively walks a decoded JSON structure and substitutes sentinel strings.
-Three substitution modes, applied in priority order:
-
-=over 4
-
-=item 1. Exact match: if a string value equals a sentinel key exactly, it is
-replaced by the corresponding value (scalar or arrayref).
-
-=item 2. Array expansion: if a sentinel's replacement is an arrayref and the
-sentinel appears as a substring of the string value, the field is replaced by
-an array of strings — one per element — each with the sentinel substituted by
-that element. Used by C<_build_batch_request_body> to fan a single field into a
-JSON array of prefixed strings.
-
-=item 3. Scalar substring: remaining sentinel occurrences are replaced
-in-place with their scalar values.
-
-=back
-
-=cut
-
-=head2 _apply_subs
-
-    my $result = _apply_subs( $val, \%subs );
-
-Applies sentinel substitutions to a single string value. See
-C<_substitute_sentinels> for the three-mode priority order (exact match,
-array expansion, scalar substring).
-
-=cut
-
-sub _apply_subs {
-    my ( $val, $subs ) = @_;
-    $val //= '';
-
-    return $subs->{$val} if exists $subs->{$val};
-
-    for my $sentinel ( keys %$subs ) {
-        if ( ref( $subs->{$sentinel} ) eq 'ARRAY' && index( $val, $sentinel ) >= 0 ) {
-            return [
-                map {
-                    my $v = $val;
-                    $v =~ s/\Q$sentinel\E/$_/g;
-                    for my $s ( keys %$subs ) {
-                        next if ref( $subs->{$s} );
-                        $v =~ s/\Q$s\E/$subs->{$s}/g;
-                    }
-                    $v
-                } @{ $subs->{$sentinel} }
-            ];
-        }
-    }
-
-    for my $sentinel ( keys %$subs ) {
-        next if ref( $subs->{$sentinel} );
-        $val =~ s/\Q$sentinel\E/$subs->{$sentinel}/g;
-    }
-    return $val;
-}
-
-sub _substitute_sentinels {
-    my ( $node, $subs ) = @_;
-
-    if ( ref($node) eq 'HASH' ) {
-        for my $key ( keys %$node ) {
-            if ( ref( $node->{$key} ) ) {
-                _substitute_sentinels( $node->{$key}, $subs );
-            } else {
-                $node->{$key} = _apply_subs( $node->{$key}, $subs );
-            }
-        }
-    } elsif ( ref($node) eq 'ARRAY' ) {
-        for my $i ( 0 .. $#$node ) {
-            if ( ref( $node->[$i] ) ) {
-                _substitute_sentinels( $node->[$i], $subs );
-            } else {
-                $node->[$i] = _apply_subs( $node->[$i], $subs );
-            }
-        }
-    }
-}
-
-=head2 _resolve_path
-
-    my $value = $self->_resolve_path( $data, $path );
-
-Walks a dot-notation path (e.g. C<data.0.embedding>) into a decoded JSON
-structure, treating numeric segments as array indices.
-Returns C<undef> if any step is missing.
-
-=cut
-
-sub _resolve_path {
-    my ( $self, $data, $path ) = @_;
-
-    my $node = $data;
-    for my $key ( split /\./, $path ) {
-        return undef unless defined $node;
-        $node = ref($node) eq 'ARRAY' ? $node->[$key] : $node->{$key};
-    }
-    return $node;
 }
 
 1;
