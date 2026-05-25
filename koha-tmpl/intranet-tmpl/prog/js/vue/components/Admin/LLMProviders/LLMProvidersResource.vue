@@ -26,9 +26,9 @@ export default {
                 add: "LLMProvidersFormAdd",
                 edit: "LLMProvidersFormAddEdit",
             },
-            apiClient: APIClient.llm_providers.llm_providers,
+            apiClient: APIClient.search.llm_providers,
             table: {
-                resourceTableUrl: APIClient.llm_providers.httpClient._baseURL,
+                resourceTableUrl: "/api/v1/llm_providers",
             },
             i18n: {
                 deleteConfirmationMessage: $__(

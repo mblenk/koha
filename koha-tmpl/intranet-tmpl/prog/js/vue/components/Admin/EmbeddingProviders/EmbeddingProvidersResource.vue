@@ -21,7 +21,7 @@ export default {
         const initialized = ref(false);
         let esVersion = null;
         onBeforeMount(async () => {
-            APIClient.embedding_providers.config.get().then(result => {
+            APIClient.search.embedding_config.get().then(result => {
                 esVersion = result.elasticsearch_version;
                 if (esVersion !== null && esVersion < 8) {
                     baseResource.setMessage(
@@ -78,10 +78,9 @@ export default {
                 add: "EmbeddingProvidersFormAdd",
                 edit: "EmbeddingProvidersFormAddEdit",
             },
-            apiClient: APIClient.embedding_providers.embedding_providers,
+            apiClient: APIClient.search.embedding_providers,
             table: {
-                resourceTableUrl:
-                    APIClient.embedding_providers.httpClient._baseURL,
+                resourceTableUrl: "/api/v1/embedding_providers",
             },
             i18n: {
                 deleteConfirmationMessage: $__(
