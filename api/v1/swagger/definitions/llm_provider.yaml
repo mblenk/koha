@@ -1,0 +1,53 @@
+---
+type: object
+properties:
+  llm_provider_id:
+    type: integer
+    description: Internally assigned LLM provider identifier
+    readOnly: true
+  name:
+    description: Admin-given label for this provider configuration
+    type: string
+  url:
+    description: Full endpoint URL for the chat completions API
+    type: string
+  model:
+    description: Model name substituted as {{model}} in the request body template
+    type: string
+  api_key:
+    description: Bearer token for authentication
+    type:
+      - string
+      - "null"
+  auth_type:
+    description: Whether to send an Authorization header
+    type: string
+    enum:
+      - none
+      - bearer
+  request_body_template:
+    description: JSON body template with {{model}}, {{messages}}, and {{system_prompt}} as sentinel values
+    type: string
+  response_key:
+    description: Dot-notation path to the reply text in the response (e.g. choices.0.message.content)
+    type: string
+  system_prompt:
+    description: System prompt injected at the start of every conversation
+    type:
+      - string
+      - "null"
+  status:
+    description: Only one provider may be active at a time
+    type: string
+    enum:
+      - active
+      - inactive
+additionalProperties: false
+required:
+  - name
+  - url
+  - model
+  - auth_type
+  - request_body_template
+  - response_key
+  - status

@@ -11,6 +11,7 @@ import AVAPIClient from "@fetch/authorised-values-api-client";
 import CashAPIClient from "@fetch/cash-api-client";
 import ItemAPIClient from "@fetch/item-api-client";
 import EmbeddingProvidersAPIClient from "@fetch/embedding-providers-api-client";
+import LLMProvidersAPIClient from "@fetch/llm-providers-api-client";
 import RecordSourcesAPIClient from "@fetch/record-sources-api-client";
 import SysprefAPIClient from "@fetch/system-preferences-api-client";
 import SIP2APIClient from "@fetch/sip2-api-client";
@@ -31,6 +32,7 @@ export const APIClient = {
     sip2: new SIP2APIClient(HttpClient),
     preservation: new PreservationAPIClient(HttpClient),
     embedding_providers: new EmbeddingProvidersAPIClient(HttpClient),
+    llm_providers: new LLMProvidersAPIClient(HttpClient),
     record_sources: new RecordSourcesAPIClient(HttpClient),
 };
 
