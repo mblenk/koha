@@ -157,7 +157,7 @@ use Koha::SearchEngine::QueryBuilder;
 use Koha::Virtualshelves;
 use Koha::SearchFields;
 use Koha::SearchFilters;
-use Koha::BackgroundJobs;
+use Koha::BackgroundJob::IndexBiblioEmbeddings;
 
 use URI::Escape;
 use JSON qw( decode_json encode_json );
@@ -541,20 +541,9 @@ my $server        = 'biblioserver';
 my $semantic_mode = $cgi->param('semantic')
     && C4::Context->preference('VectorSearchEnabled');
 
-my $embedding_reindex_in_progress = 0;
-if ($semantic_mode) {
-    for my $job (
-        Koha::BackgroundJobs->search( { type => 'index_biblio_embeddings', status => { -in => [qw(new started)] } } )
-        ->as_list )
-    {
-        my $data = $job->decoded_data;
-        if ( $data && $data->{job_args} && $data->{job_args}{rebuild_all} ) {
-            $embedding_reindex_in_progress = 1;
-            last;
-        }
-    }
-    $semantic_mode = 0 if $embedding_reindex_in_progress;
-}
+my $embedding_reindex_in_progress =
+    $semantic_mode ? Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress : 0;
+$semantic_mode = 0 if $embedding_reindex_in_progress;
 
 if ($semantic_mode) {
     eval {

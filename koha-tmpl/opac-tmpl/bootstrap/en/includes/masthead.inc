@@ -1,6 +1,7 @@
 [% USE raw %]
 [% USE Asset %]
 [% USE Koha %]
+[% USE BackgroundJob %]
 [% USE Branches %]
 [% USE Categories %]
 [% USE AuthClient %]
@@ -370,7 +371,7 @@
                                             <i class="fa fa-search" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    [% IF Koha.Preference('VectorSearchEnabled') %]
+                                    [% IF Koha.Preference('VectorSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress %]
                                         <div class="col-sm-auto order-last">
                                             <button type="button" class="btn btn-outline-secondary" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal">
                                                 <i class="fa-solid fa-brain" aria-hidden="true"></i>

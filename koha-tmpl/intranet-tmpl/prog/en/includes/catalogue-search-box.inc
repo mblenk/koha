@@ -1,5 +1,6 @@
 [% USE raw %]
 [% USE Koha %]
+[% USE BackgroundJob %]
 [% PROCESS 'html_helpers.inc' %]
 [% USE Branches %]
 <!-- catalogue-search-box.inc -->
@@ -19,7 +20,7 @@
             [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') %]
                 <button type="button" class="form-extra-content-toggle" title="More options"><i class="form-extra-content-icon fa-solid fa-sliders" aria-hidden="true"></i></button>
             [% END %]
-            [% IF Koha.Preference('VectorSearchEnabled') %]
+            [% IF Koha.Preference('VectorSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress %]
                 <button type="button" class="semantic-search-toggle" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal"
                     ><i class="fa-solid fa-brain" aria-hidden="true"></i
                 ></button>

@@ -21,6 +21,7 @@ use Modern::Perl;
 
 use Try::Tiny qw( catch try );
 
+use Koha::BackgroundJobs;
 use Koha::Biblios;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Elasticsearch;
@@ -63,6 +64,24 @@ MARC data is never overwritten.
 =cut
 
 sub job_type { return 'index_biblio_embeddings' }
+
+=head3 rebuild_in_progress
+
+Returns true when a full-rebuild job (C<rebuild_all => 1>) is currently
+active (status C<new> or C<started>).
+
+=cut
+
+sub rebuild_in_progress {
+    for my $job (
+        Koha::BackgroundJobs->search( { type => 'index_biblio_embeddings', status => { -in => [qw(new started)] } } )
+        ->as_list )
+    {
+        my $data = $job->decoded_data;
+        return 1 if $data && $data->{rebuild_all};
+    }
+    return 0;
+}
 
 =head3 enqueue
 

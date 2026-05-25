@@ -64,7 +64,7 @@ use Koha::Library::Groups;
 use Koha::Patrons;
 use Koha::Plugins;
 use Koha::SearchFields;
-use Koha::BackgroundJobs;
+use Koha::BackgroundJob::IndexBiblioEmbeddings;
 
 use POSIX qw(ceil floor strftime);
 use URI::Escape;
@@ -585,17 +585,7 @@ if ($tag) {
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
 } elsif ( $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled') ) {
-    my $embedding_reindex_in_progress = 0;
-    for my $job (
-        Koha::BackgroundJobs->search( { type => 'index_biblio_embeddings', status => { -in => [qw(new started)] } } )
-        ->as_list )
-    {
-        my $data = $job->decoded_data;
-        if ( $data && $data->{job_args} && $data->{job_args}{rebuild_all} ) {
-            $embedding_reindex_in_progress = 1;
-            last;
-        }
-    }
+    my $embedding_reindex_in_progress = Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress;
 
     if ($embedding_reindex_in_progress) {
         $template->param( embedding_reindex_in_progress => 1 );
