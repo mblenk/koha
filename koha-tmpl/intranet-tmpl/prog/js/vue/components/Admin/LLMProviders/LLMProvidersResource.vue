@@ -9,6 +9,7 @@ import BaseResource from "../../BaseResource.vue";
 import { useBaseResource } from "../../../composables/base-resource.js";
 import { APIClient } from "../../../fetch/api-client.js";
 import { $__ } from "@koha-vue/i18n";
+import { LLM_PROVIDER_PRESETS } from "./llm-provider-presets.js";
 
 export default {
     props: {
@@ -49,6 +50,31 @@ export default {
                     hideIn: ["Form", "Show"],
                 },
                 {
+                    name: "preset",
+                    type: "select",
+                    label: $__("Provider preset"),
+                    selectLabel: "label",
+                    requiredKey: "id",
+                    options: LLM_PROVIDER_PRESETS,
+                    hideIn: ["List", "Show"],
+                    toolTip: $__(
+                        "Select a provider to pre-fill the configuration fields below."
+                    ),
+                    onSelected: resource => {
+                        const preset = LLM_PROVIDER_PRESETS.find(
+                            p => p.id === resource.preset
+                        );
+                        if (!preset || preset.id === "custom") return;
+                        resource.url = preset.url;
+                        resource.request_body_template =
+                            preset.request_body_template;
+                        resource.response_key = preset.response_key;
+                        resource.auth_type = preset.auth_type;
+                        if (preset.suggested_model)
+                            resource.model = preset.suggested_model;
+                    },
+                },
+                {
                     name: "name",
                     required: true,
                     type: "text",
@@ -62,6 +88,8 @@ export default {
                     toolTip: $__(
                         "Full endpoint URL for the chat completions API"
                     ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                 },
                 {
                     name: "model",
@@ -111,6 +139,8 @@ export default {
                     toolTip: $__(
                         'Full JSON body sent to the provider. Use "{{model}}" for the model name, "{{messages}}" for the conversation array, and "{{system_prompt}}" for the system prompt. Example: {"model":"{{model}}","messages":{{messages}}}'
                     ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                     hideIn: ["List", "Show"],
                 },
                 {
@@ -121,6 +151,8 @@ export default {
                     toolTip: $__(
                         "Dot-notation path to the reply text in the response — e.g. choices.0.message.content"
                     ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                     hideIn: ["List", "Show"],
                 },
                 {
@@ -162,6 +194,7 @@ export default {
             const provider = JSON.parse(JSON.stringify(llmProviderToSave));
             const providerId = provider.llm_provider_id;
             delete provider.llm_provider_id;
+            delete provider.preset;
 
             if (providerId) {
                 return baseResource.apiClient

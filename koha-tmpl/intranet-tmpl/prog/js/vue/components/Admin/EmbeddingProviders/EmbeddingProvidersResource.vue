@@ -10,6 +10,7 @@ import BaseResource from "../../BaseResource.vue";
 import { useBaseResource } from "../../../composables/base-resource.js";
 import { APIClient } from "../../../fetch/api-client.js";
 import { $__ } from "@koha-vue/i18n";
+import { EMBEDDING_PROVIDER_PRESETS } from "./embedding-provider-presets.js";
 import { onBeforeMount, ref } from "vue";
 
 export default {
@@ -105,6 +106,31 @@ export default {
                     hideIn: ["Form", "Show"],
                 },
                 {
+                    name: "preset",
+                    type: "select",
+                    label: $__("Provider preset"),
+                    selectLabel: "label",
+                    requiredKey: "id",
+                    options: EMBEDDING_PROVIDER_PRESETS,
+                    hideIn: ["List", "Show"],
+                    toolTip: $__(
+                        "Select a provider to pre-fill the configuration fields below."
+                    ),
+                    onSelected: resource => {
+                        const preset = EMBEDDING_PROVIDER_PRESETS.find(
+                            p => p.id === resource.preset
+                        );
+                        if (!preset || preset.id === "custom") return;
+                        resource.url = preset.url;
+                        resource.request_body_template =
+                            preset.request_body_template;
+                        resource.response_key = preset.response_key;
+                        resource.auth_type = preset.auth_type;
+                        if (preset.suggested_model)
+                            resource.model = preset.suggested_model;
+                    },
+                },
+                {
                     name: "name",
                     required: true,
                     type: "text",
@@ -115,6 +141,8 @@ export default {
                     required: true,
                     type: "text",
                     label: $__("URL"),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                 },
                 {
                     name: "model",
@@ -166,6 +194,8 @@ export default {
                     toolTip: $__(
                         'Full JSON body sent to the provider. Use "{{text}}" for the input and "{{model}}" for the model name. Example: {"model":"{{model}}","prompt":"{{text}}"}'
                     ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                     hideIn: ["List", "Show"],
                 },
                 {
@@ -175,6 +205,8 @@ export default {
                     toolTip: $__(
                         'Optional: JSON body template used when embedding search queries. Leave blank to use the request body template. Use this for asymmetric models that require different prefixes for documents and queries — e.g. {"model":"{{model}}","prompt":"search_query: {{text}}"}'
                     ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
                     hideIn: ["List", "Show"],
                 },
                 {
@@ -207,7 +239,9 @@ export default {
                     toolTip: $__(
                         "Dot-notation path to the embedding array in the response — e.g. 'embedding', 'data.0.embedding'"
                     ),
-                    disabled: resource => !!resource.response_payload,
+                    disabled: resource =>
+                        !!resource.response_payload ||
+                        !!(resource.preset && resource.preset !== "custom"),
                     hideIn: ["List", "Show"],
                 },
                 {
@@ -313,6 +347,7 @@ export default {
 
             delete embeddingProvider.embedding_provider_id;
             delete embeddingProvider.response_payload;
+            delete embeddingProvider.preset;
 
             if (
                 embeddingProvider.status === "active" &&
