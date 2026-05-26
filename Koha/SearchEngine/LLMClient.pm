@@ -61,7 +61,7 @@ use HTTP::Request;
 use JSON qw( decode_json encode_json );
 use Koha::LLMProviders;
 
-use constant LWP_TIMEOUT => 60;
+use constant LWP_TIMEOUT => 120;
 
 =head1 METHODS
 
@@ -222,10 +222,10 @@ sub _build_request_body {
 
     my $structure = decode_json( $self->{_request_body_template} );
 
-    my $has_system_sentinel =
-        index( $self->{_request_body_template}, '{{system_prompt}}' ) >= 0;
+    my $has_system_sentinel = index( $self->{_request_body_template}, '{{system_prompt}}' ) >= 0;
 
-    my $chat_messages = $has_system_sentinel
+    my $chat_messages =
+          $has_system_sentinel
         ? $messages
         : [ { role => 'system', content => $system_prompt }, @$messages ];
 

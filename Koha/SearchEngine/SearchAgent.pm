@@ -51,11 +51,21 @@ use Koha::SearchEngine;
 use Koha::SearchEngine::Search;
 use Koha::SearchEngine::LLMClient;
 
-use constant TOP_N => 5;
+use constant TOP_N                       => 5;
+use constant NORMALISATION_HISTORY_TURNS => 3;    # up to 3 user+assistant pairs = 6 messages
 use constant CATALOGUE_PREAMBLE =>
     "You are a library catalogue assistant. Your role is to help users discover books and materials in the library collection — not to answer their questions directly. When shown catalogue search results, briefly describe the items found and how they relate to the user's topic. If results look relevant, say so. If they seem off-target, suggest how the user might refine their search. Never provide factual answers to questions; instead, point to library resources the user can explore.";
 use constant NORMALISATION_PROMPT =>
-    "You are a multilingual library search query normaliser. Given a search query in any language, extract and return only the core subject matter as a concise natural search phrase in the same language as the input. Strip conversational preamble and filler (phrases meaning \"I want to find\", \"Can you show me\", \"I'm looking for\", and their equivalents in any language). Remove generic library terms such as \"books\", \"articles\", \"resources\" and their equivalents. Return only the phrase — no explanation, no trailing punctuation.";
+    "You are a multilingual library search query normaliser with access to the conversation history shown above.\n"
+    . "Your task has two steps:\n"
+    . "1. RESOLVE: If the new query contains pronouns or references that depend on earlier turns "
+    . "(e.g. \"his\", \"her\", \"their\", \"this author\", \"those\", \"the same topic\", \"what about ...\"), "
+    . "replace them with the specific entities named in the conversation history.\n"
+    . "2. NORMALISE: From the resolved query, extract only the core subject matter as a concise natural search phrase. "
+    . "Strip conversational preamble and filler (phrases meaning \"I want to find\", \"Can you show me\", "
+    . "\"I'm looking for\", and their equivalents in any language). "
+    . "Remove generic library terms such as \"books\", \"articles\", \"resources\" and their equivalents.\n"
+    . "Return only the final phrase — no explanation, no trailing punctuation, in the same language as the input.";
 
 =head1 METHODS
 
@@ -108,7 +118,13 @@ sub converse {
 
     my $client = Koha::SearchEngine::LLMClient->new;
 
-    my $search_query = $self->_normalise_query( $query, $client );
+    my $norm_history = do {
+        my $max   = NORMALISATION_HISTORY_TURNS * 2;
+        my $start = @$history > $max ? @$history - $max : 0;
+        [ @{$history}[ $start .. $#$history ] ];
+    };
+
+    my $search_query = $self->_normalise_query( $query, $client, $norm_history );
     my $results      = $self->_run_search($search_query);
     my $context      = $self->_format_context( $query, $results );
 
@@ -169,29 +185,31 @@ sub _run_search {
 
 =head2 _normalise_query
 
-    my $search_query = $self->_normalise_query( $query, $client );
+    my $search_query = $self->_normalise_query( $query, $client, $history );
 
-Extracts the core subject-matter keywords from a conversational query by
-calling the LLM with a focused extraction prompt. Returns the original C<$query>
-unchanged if the query is already concise (four words or fewer) or if the LLM
-call fails.
+Resolves contextual references (pronouns, anaphora) against C<$history> and
+extracts the core subject-matter keywords from the query. Returns the original
+C<$query> unchanged if the query is already concise (four words or fewer) and
+history is empty, or if the LLM call fails.
 
 =cut
 
 sub _normalise_query {
-    my ( $self, $query, $client ) = @_;
+    my ( $self, $query, $client, $history ) = @_;
 
     my @words = split /\s+/, $query;
-    return $query if @words <= 4;
+    return $query if @words <= 4 && !@$history;
 
     my $normalised = $client->chat(
-        [ { role => 'user', content => $query } ],
+        [ @$history, { role => 'user', content => $query } ],
         NORMALISATION_PROMPT,
     );
+    return $query unless defined $normalised;
+
     $normalised =~ s/\n.*//s;
     $normalised =~ s/^\s+|\s+$//g;
     $normalised =~ s/[.!?,;:]+$//;
-    return ( defined $normalised && length $normalised ) ? $normalised : $query;
+    return length $normalised ? $normalised : $query;
 }
 
 =head2 _record_summary
