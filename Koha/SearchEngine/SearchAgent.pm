@@ -51,15 +51,11 @@ use Koha::SearchEngine;
 use Koha::SearchEngine::Search;
 use Koha::SearchEngine::LLMClient;
 
-use constant TOP_N              => 5;
-use constant CATALOGUE_PREAMBLE => <<'END';
-You are a library catalogue assistant. Your role is to help users discover books
-and materials in the library collection — not to answer their questions directly.
-When shown catalogue search results, briefly describe the items found and how they
-relate to the user's topic. If results look relevant, say so. If they seem
-off-target, suggest how the user might refine their search. Never provide factual
-answers to questions; instead, point to library resources the user can explore.
-END
+use constant TOP_N => 5;
+use constant CATALOGUE_PREAMBLE =>
+    "You are a library catalogue assistant. Your role is to help users discover books and materials in the library collection — not to answer their questions directly. When shown catalogue search results, briefly describe the items found and how they relate to the user's topic. If results look relevant, say so. If they seem off-target, suggest how the user might refine their search. Never provide factual answers to questions; instead, point to library resources the user can explore.";
+use constant NORMALISATION_PROMPT =>
+    "You are a multilingual library search query normaliser. Given a search query in any language, extract and return only the core subject matter as a concise natural search phrase in the same language as the input. Strip conversational preamble and filler (phrases meaning \"I want to find\", \"Can you show me\", \"I'm looking for\", and their equivalents in any language). Remove generic library terms such as \"books\", \"articles\", \"resources\" and their equivalents. Return only the phrase — no explanation, no trailing punctuation.";
 
 =head1 METHODS
 
@@ -188,18 +184,9 @@ sub _normalise_query {
     my @words = split /\s+/, $query;
     return $query if @words <= 4;
 
-    my $system =
-          'You extract the core subject matter from a library catalogue search query '
-        . 'as a short, natural search phrase. '
-        . 'Remove conversational filler such as "I want to learn about", "Can you show me", '
-        . '"I\'m looking for", "I need information on", "find me", "show me", etc. '
-        . 'Remove generic library terms: "books", "articles", "resources", "materials", "titles". '
-        . 'Return a concise natural phrase that captures the topic — not a comma-separated list. '
-        . 'Return only the phrase, no explanation, no trailing punctuation.';
-
     my $normalised = $client->chat(
         [ { role => 'user', content => $query } ],
-        $system,
+        NORMALISATION_PROMPT,
     );
     $normalised =~ s/\n.*//s;
     $normalised =~ s/^\s+|\s+$//g;
