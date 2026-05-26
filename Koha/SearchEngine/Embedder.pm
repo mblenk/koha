@@ -187,6 +187,16 @@ sub embed_document {
     return $self->_embed( $text, undef, 'document embedding failed' );
 }
 
+=head2 batch_size
+
+    my $n = $embedder->batch_size;
+
+Returns the configured batch size for bulk embedding requests.
+
+=cut
+
+sub batch_size { return $_[0]->{_batch_size} }
+
 =head2 _embed
 
     my $vector = $self->_embed( $text, $template, $warn_label );

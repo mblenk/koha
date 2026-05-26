@@ -142,30 +142,44 @@ my $flush = sub {
     @bulk_body = ();
 };
 
+my $batch_size = $embedder->batch_size;
+my ( @batch_biblios, @batch_texts );
+
+my $flush_batch = sub {
+    return unless @batch_biblios;
+    my $vectors = $embedder->embed_batch( \@batch_texts );
+    for my $i ( 0 .. $#batch_biblios ) {
+        my $vector = $vectors->[$i];
+        unless ($vector) {
+            $skipped++;
+            warn "rebuild_embeddings: could not embed biblio $batch_biblios[$i]\n" if $verbose;
+            next;
+        }
+
+        # Partial update: each record requires two lines in the ES bulk body
+        push @bulk_body, { update => { _id       => "$batch_biblios[$i]" } };
+        push @bulk_body, { doc    => { embedding => $vector } };
+        $count++;
+    }
+    if ( @bulk_body >= $commit * 2 ) {
+        $flush->();
+        print "[$count records embedded]\n" if $verbose;
+    }
+    @batch_biblios = ();
+    @batch_texts   = ();
+};
+
 while ( defined( my $biblionumber = $iterator->() ) ) {
     my $text = $embedder->text_for_biblio($biblionumber);
     unless ($text) {
         $skipped++;
         next;
     }
-
-    my $vector = $embedder->embed_document($text);
-    unless ($vector) {
-        $skipped++;
-        warn "rebuild_embeddings: could not embed biblio $biblionumber\n" if $verbose;
-        next;
-    }
-
-    # Partial update: each record requires two lines in the ES bulk body
-    push @bulk_body, { update => { _id       => "$biblionumber" } };
-    push @bulk_body, { doc    => { embedding => $vector } };
-    $count++;
-
-    if ( @bulk_body >= $commit * 2 ) {
-        $flush->();
-        print "[$count records embedded]\n" if $verbose;
-    }
+    push @batch_biblios, $biblionumber;
+    push @batch_texts,   $text;
+    $flush_batch->() if @batch_texts >= $batch_size;
 }
+$flush_batch->();
 $flush->();
 
 print "Done. Embedded: $count, Skipped: $skipped\n";
