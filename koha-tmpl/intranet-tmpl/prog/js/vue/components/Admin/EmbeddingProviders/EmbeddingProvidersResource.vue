@@ -270,6 +270,7 @@ export default {
                     type: "number",
                     label: $__("Vector dimensions"),
                     hideIn: ["List"],
+                    disabled: resource => !!resource.embedding_provider_id,
                 },
                 {
                     name: "batch_size",
