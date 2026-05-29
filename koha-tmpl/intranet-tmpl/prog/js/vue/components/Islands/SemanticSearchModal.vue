@@ -192,7 +192,7 @@
 </template>
 
 <script>
-import { ref, computed, nextTick, onMounted } from "vue";
+import { ref, computed, nextTick, onMounted, watch } from "vue";
 import { $__ } from "@koha-vue/i18n";
 import { APIClient } from "../../fetch/api-client.js";
 
@@ -201,6 +201,7 @@ export default {
     props: {
         searchUrl: { type: String, required: true },
         llmAvailable: { type: String, default: "0" },
+        borrowerNumber: { type: String, default: "" },
     },
     setup(props) {
         const isLlmAvailable = computed(
@@ -215,7 +216,43 @@ export default {
         const chatBody = ref(null);
         const chatInput = ref(null);
 
+        const storageKey = computed(() =>
+            props.borrowerNumber
+                ? `koha_search_chat_${props.borrowerNumber}`
+                : null
+        );
+
+        const loadFromStorage = () => {
+            if (!storageKey.value) return;
+            try {
+                const stored = localStorage.getItem(storageKey.value);
+                if (stored) {
+                    const { conversation: c, results: r } = JSON.parse(stored);
+                    conversation.value = c || [];
+                    results.value = r || [];
+                }
+            } catch (_) {}
+        };
+
+        const saveToStorage = () => {
+            if (!storageKey.value) return;
+            try {
+                localStorage.setItem(
+                    storageKey.value,
+                    JSON.stringify({
+                        conversation: conversation.value,
+                        results: results.value,
+                    })
+                );
+            } catch (_) {}
+        };
+
+        watch(conversation, saveToStorage, { deep: true });
+        watch(results, saveToStorage, { deep: true });
+
         onMounted(() => {
+            loadFromStorage();
+
             const modalEl = document.getElementById("semanticSearchModal");
             if (!modalEl) return;
             modalEl.addEventListener("shown.bs.modal", () => {
@@ -227,11 +264,15 @@ export default {
             });
             modalEl.addEventListener("hidden.bs.modal", () => {
                 query.value = "";
-                if (isLlmAvailable.value) {
-                    conversation.value = [];
-                    results.value = [];
-                    errorMsg.value = "";
-                }
+                errorMsg.value = "";
+            });
+
+            document.querySelectorAll("#logout, .logout").forEach(el => {
+                el.addEventListener("click", () => {
+                    if (storageKey.value) {
+                        localStorage.removeItem(storageKey.value);
+                    }
+                });
             });
         });
 
