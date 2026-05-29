@@ -584,7 +584,7 @@ if ($tag) {
     # FIXME: Because search and standard search don't work together OpacHiddenItems
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
-} elsif ( $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled') ) {
+} elsif ( $cgi->param('semantic') && C4::Context->preference('AgentSearchEnabled') ) {
     my $embedding_reindex_in_progress = Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress;
 
     if ($embedding_reindex_in_progress) {
@@ -840,7 +840,7 @@ for ( my $i = 0 ; $i < @servers ; $i++ ) {
             my $limit_cgi_not_availablity = $limit_cgi;
             $limit_cgi_not_availablity =~ s/&limit=available//g if defined $limit_cgi_not_availablity;
             $template->param( limit_cgi_not_availablity => $limit_cgi_not_availablity );
-            $query_cgi .= '&semantic=1' if $cgi->param('semantic') && C4::Context->preference('VectorSearchEnabled');
+            $query_cgi .= '&semantic=1' if $cgi->param('semantic') && C4::Context->preference('AgentSearchEnabled');
             $template->param( limit_cgi  => $limit_cgi );
             $template->param( countrss   => $countRSS );
             $template->param( query_cgi  => $query_cgi );

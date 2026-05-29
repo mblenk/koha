@@ -539,7 +539,7 @@ my $results_hashref;
 
 my $server        = 'biblioserver';
 my $semantic_mode = $cgi->param('semantic')
-    && C4::Context->preference('VectorSearchEnabled');
+    && C4::Context->preference('AgentSearchEnabled');
 
 my $embedding_reindex_in_progress =
     $semantic_mode ? Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress : 0;

@@ -902,7 +902,7 @@ INSERT INTO systempreferences ( `variable`, `value` ) VALUES
 ('viewLabeledMARC','0'),
 ('viewMARC','1'),
 ('virtualshelves','1'),
-('VectorSearchEnabled','0'),
+('AgentSearchEnabled','0'),
 ('WaitingNotifyAtCheckin','0'),
 ('WaitingNotifyAtCheckout','0'),
 ('WebBasedSelfCheck','0'),

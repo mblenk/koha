@@ -667,7 +667,7 @@ to filter out documents with weak semantic relevance.
 Returns results in the same shape as L</search_compat> so CGI scripts can
 branch on a single flag without changing template variable names.
 
-Requires Elasticsearch 8.x and C<VectorSearchEnabled> to be set. Returns an
+Requires Elasticsearch 8.x and C<AgentSearchEnabled> to be set. Returns an
 error string (and C<undef> results) gracefully on any failure.
 
 =cut
@@ -675,8 +675,8 @@ error string (and C<undef> results) gracefully on any failure.
 sub semantic_search {
     my ( $self, $query_text, $results_per_page, $offset, %opts ) = @_;
 
-    return ( "VectorSearchEnabled is off", undef, [] )
-        unless C4::Context->preference('VectorSearchEnabled');
+    return ( "AgentSearchEnabled is off", undef, [] )
+        unless C4::Context->preference('AgentSearchEnabled');
 
     return ( "No active embedding provider configured", undef, [] )
         unless Koha::EmbeddingProviders->search( { status => 'active' } )->count;

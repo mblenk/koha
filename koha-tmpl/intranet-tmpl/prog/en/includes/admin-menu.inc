@@ -54,5 +54,5 @@
     smssenddriver="[% Koha.Preference('SMSSendDriver') | html %]"
     enableadvancedcatalogingeditor="[% Koha.Preference('EnableAdvancedCatalogingEditor') | html %]"
     illmodule="[% Koha.Preference('ILLModule') | html %]"
-    vectorsearchenabled="[% Koha.Preference('VectorSearchEnabled') | html %]"
+    agentsearchenabled="[% Koha.Preference('AgentSearchEnabled') | html %]"
 ></admin-menu>

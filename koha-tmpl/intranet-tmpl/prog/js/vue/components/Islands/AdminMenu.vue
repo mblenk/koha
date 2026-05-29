@@ -308,7 +308,7 @@
                 </li>
                 <li
                     v-if="
-                        vectorsearchenabled &&
+                        agentsearchenabled &&
                         can_user_parameters_manage_sysprefs
                     "
                 >
@@ -622,7 +622,7 @@ export default {
         smssenddriver: String,
         enableadvancedcatalogingeditor: Number,
         illmodule: Number,
-        vectorsearchenabled: Number,
+        agentsearchenabled: Number,
     },
     setup() {
         const templateRefs = ref([]);

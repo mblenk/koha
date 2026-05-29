@@ -9,7 +9,7 @@ return {
         my ( $dbh, $out ) = @$args{qw(dbh out)};
 
         for my $pref (
-            [ 'VectorSearchEnabled', '0' ],
+            [ 'AgentSearchEnabled', '0' ],
             )
         {
             $dbh->do(

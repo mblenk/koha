@@ -10,7 +10,7 @@
 [% USE raw %]
 [% USE Koha %]
 [% USE BackgroundJob %]
-[% IF Koha.Preference('VectorSearchEnabled') %]
+[% IF Koha.Preference('AgentSearchEnabled') %]
     <semantic-search-modal search-url="/cgi-bin/koha/catalogue/search.pl" llm-available="[% BackgroundJob.LLMProviderActive | html %]" borrower-number="[% loggedinusernumber | html %]">
         <div id="semanticSearchModal" class="modal fade" tabindex="-1" aria-labelledby="semanticSearchModalLabel" aria-hidden="true">
             <div class="modal-dialog">

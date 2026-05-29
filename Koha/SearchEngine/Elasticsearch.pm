@@ -274,7 +274,7 @@ sub get_elasticsearch_mappings {
             $mappings->{properties}{'subject-heading-thesaurus'} = _get_elasticsearch_field_config( 'search', 'text' );
         }
         if ( $self->index eq $BIBLIOS_INDEX
-            && C4::Context->preference('VectorSearchEnabled') )
+            && C4::Context->preference('AgentSearchEnabled') )
         {
             try {
                 my $provider = Koha::EmbeddingProviders->search( { status => 'active' } )->next;

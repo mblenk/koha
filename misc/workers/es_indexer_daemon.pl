@@ -254,7 +254,7 @@ sub commit {
         }
     }
     if (@bib_records) {
-        my $enqueue_embeddings = C4::Context->preference('VectorSearchEnabled')
+        my $enqueue_embeddings = C4::Context->preference('AgentSearchEnabled')
             && Koha::EmbeddingProviders->search( { status => 'active' } )->count;
         my $biblio_chunks = natatime $at_a_time, @bib_records;
         while ( ( my @bib_chunk = $biblio_chunks->() ) ) {

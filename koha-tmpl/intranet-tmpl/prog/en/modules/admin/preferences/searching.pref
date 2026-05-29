@@ -413,9 +413,9 @@ Searching:
 
     Vector search:
         -
-            - pref: VectorSearchEnabled
+            - pref: AgentSearchEnabled
               type: boolean
               choices:
                   1: Enable
                   0: "Don't enable"
-            - 'vector/semantic search (requires Elasticsearch 8.x). Changing this setting requires recreating the ES index with rebuild_elasticsearch.pl. Configure providers at <a href="/cgi-bin/koha/admin/embedding_providers">Admin &rsaquo; Embedding providers</a>.'
+            - 'chat based AI search (requires Elasticsearch 8.x). Changing this setting requires recreating the ES index with rebuild_elasticsearch.pl. Configure providers at <a href="/cgi-bin/koha/ai_config/llm_providers">Admin &rsaquo; LLM providers</a>.'

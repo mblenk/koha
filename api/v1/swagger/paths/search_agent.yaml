@@ -33,7 +33,7 @@
         description: |
           Service unavailable. Possible causes:
 
-          * VectorSearchEnabled is off
+          * AgentSearchEnabled is off
           * No active embedding provider configured
           * No active LLM provider configured
           * LLM call failed

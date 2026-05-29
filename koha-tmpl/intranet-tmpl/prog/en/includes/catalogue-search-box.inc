@@ -20,7 +20,7 @@
             [% IF Koha.Preference('IntranetCatalogSearchPulldown') || Koha.Preference('IntranetAddMastheadLibraryPulldown') %]
                 <button type="button" class="form-extra-content-toggle" title="More options"><i class="form-extra-content-icon fa-solid fa-sliders" aria-hidden="true"></i></button>
             [% END %]
-            [% IF Koha.Preference('VectorSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress && loggedinusername %]
+            [% IF Koha.Preference('AgentSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress && loggedinusername %]
                 <button type="button" class="semantic-search-toggle" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal"
                     ><i class="fa-solid fa-brain" aria-hidden="true"></i
                 ></button>

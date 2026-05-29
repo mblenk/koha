@@ -38,7 +38,7 @@ Run this after:
 
 =over 4
 
-=item * Enabling C<VectorSearchEnabled> and recreating the ES index
+=item * Enabling C<AgentSearchEnabled> and recreating the ES index
 
 =item * Changing the active embedding provider (model, dimensions, or fields config)
 
@@ -94,8 +94,8 @@ GetOptions(
 ) or pod2usage(1);
 pod2usage(0) if $help;
 
-die "VectorSearchEnabled syspref is off — nothing to do\n"
-    unless C4::Context->preference('VectorSearchEnabled');
+die "AgentSearchEnabled syspref is off — nothing to do\n"
+    unless C4::Context->preference('AgentSearchEnabled');
 
 die "No active embedding provider configured — nothing to do\n"
     unless Koha::EmbeddingProviders->search( { status => 'active' } )->count;

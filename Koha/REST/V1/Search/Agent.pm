@@ -48,10 +48,10 @@ sub converse {
         openapi => { error => 'Authentication required' }
     ) unless $c->stash('koha.user');
 
-    unless ( C4::Context->preference('VectorSearchEnabled') ) {
+    unless ( C4::Context->preference('AgentSearchEnabled') ) {
         return $c->render(
             status  => 503,
-            openapi => { error => 'VectorSearchEnabled is off' }
+            openapi => { error => 'AgentSearchEnabled is off' }
         );
     }
 

@@ -371,7 +371,7 @@
                                             <i class="fa fa-search" aria-hidden="true"></i>
                                         </button>
                                     </div>
-                                    [% IF Koha.Preference('VectorSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress && loggedinusername %]
+                                    [% IF Koha.Preference('AgentSearchEnabled') && !BackgroundJob.EmbeddingReindexInProgress && loggedinusername %]
                                         <div class="col-sm-auto order-last">
                                             <button type="button" class="btn btn-outline-secondary" title="Semantic search" aria-label="Open semantic search" data-bs-toggle="modal" data-bs-target="#semanticSearchModal">
                                                 <i class="fa-solid fa-brain" aria-hidden="true"></i>
@@ -382,7 +382,7 @@
                                 <!-- /.form-row -->
                                 <input type="hidden" name="weight_search" value="1" />
                             </form>
-                            [% IF Koha.Preference('VectorSearchEnabled') %]
+                            [% IF Koha.Preference('AgentSearchEnabled') %]
                                 <semantic-search-modal
                                     search-url="/cgi-bin/koha/opac-search.pl"
                                     llm-available="[% BackgroundJob.LLMProviderActive | html %]"
