@@ -174,6 +174,140 @@ Returns the configured system prompt string.
 
 sub system_prompt { return $_[0]->{_system_prompt} }
 
+=head2 chat_with_tools
+
+    my $result = $client->chat_with_tools( \@messages, $system_prompt, \@tools );
+
+Like C<chat()> but includes tool definitions in the request. Returns a hashref:
+
+    { type => 'tool_call', tool_calls => [...], raw_message => {...} }
+    { type => 'text',      reply => '...' }
+
+or C<undef> on failure. C<\@tools> is optional — omit it to suppress tool
+definitions while preserving the structured return type.
+
+=cut
+
+sub chat_with_tools {
+    my ( $self, $messages, $system_prompt, $tools ) = @_;
+    $system_prompt //= $self->{_system_prompt} // '';
+
+    return try {
+        $self->_handle_chat_with_tools( $messages, $system_prompt, $tools );
+    } catch {
+        warn "chat_with_tools failed: $_\n";
+        return undef;
+    };
+}
+
+=head2 _handle_chat_with_tools
+
+    my $result = $self->_handle_chat_with_tools( \@messages, $system_prompt, \@tools );
+
+Builds and sends the request, then checks the response for tool calls before
+falling back to plain text extraction. Dies on HTTP error or if neither tool
+calls nor reply text are found.
+
+=cut
+
+sub _handle_chat_with_tools {
+    my ( $self, $messages, $system_prompt, $tools ) = @_;
+
+    my $body     = $self->_build_request_body_with_tools( $messages, $system_prompt, $tools );
+    my $response = $self->_make_request($body);
+    die "HTTP " . $response->status_line unless $response->is_success;
+
+    my $data   = decode_json( $response->decoded_content );
+    my $result = $self->_extract_tool_calls($data);
+    return $result if $result;
+
+    my $reply = $self->_resolve_path( $data, $self->{_response_key} );
+    die "No reply text or tool calls in response from '$self->{_url}'"
+        unless defined $reply && length $reply;
+
+    return { type => 'text', reply => $reply };
+}
+
+=head2 _build_request_body_with_tools
+
+    my $json = $self->_build_request_body_with_tools( \@messages, $system_prompt, \@tools );
+
+Like C<_build_request_body> but injects the tools array as a top-level key
+before encoding, avoiding a redundant encode/decode cycle.
+
+=cut
+
+sub _build_request_body_with_tools {
+    my ( $self, $messages, $system_prompt, $tools ) = @_;
+    $system_prompt //= $self->{_system_prompt} // '';
+
+    my $structure = decode_json( $self->{_request_body_template} );
+
+    my $has_system_sentinel = index( $self->{_request_body_template}, '{{system_prompt}}' ) >= 0;
+    my $chat_messages =
+          $has_system_sentinel
+        ? $messages
+        : [ { role => 'system', content => $system_prompt }, @$messages ];
+
+    my %subs = (
+        '{{model}}'         => $self->{_model},
+        '{{messages}}'      => $chat_messages,
+        '{{system_prompt}}' => $system_prompt,
+    );
+    $self->_substitute_sentinels( $structure, \%subs );
+    $structure->{tools} = $tools if $tools && @$tools;
+    return encode_json($structure);
+}
+
+=head2 _extract_tool_calls
+
+    my $result = $self->_extract_tool_calls($data);
+
+Returns a hashref:
+
+    { type => 'tool_call', tool_calls => [...], raw_message => {...} }
+
+where each entry in C<tool_calls> is C<{ name => '...', arguments => \%hashref }>.
+Returns C<undef> if no tool calls are present in the response.
+
+=cut
+
+sub _extract_tool_calls {
+
+    #FIXME: Needs to be more provider agnostic
+    my ( $self, $data ) = @_;
+
+    my ( $raw_tool_calls, $raw_message );
+
+    if ( ref $data->{message} eq 'HASH' && ref $data->{message}->{tool_calls} eq 'ARRAY' ) {
+        $raw_tool_calls = $data->{message}->{tool_calls};
+        $raw_message    = $data->{message};
+    } elsif ( ref $data->{choices} eq 'ARRAY'
+        && ref $data->{choices}->[0]->{message} eq 'HASH'
+        && ref $data->{choices}->[0]->{message}->{tool_calls} eq 'ARRAY' )
+    {
+        $raw_tool_calls = $data->{choices}->[0]->{message}->{tool_calls};
+        $raw_message    = $data->{choices}->[0]->{message};
+    }
+
+    return undef unless $raw_tool_calls && @$raw_tool_calls;
+
+    my @tool_calls;
+    for my $tool_call (@$raw_tool_calls) {
+        my $fn   = $tool_call->{function} or next;
+        my $name = $fn->{name}            or next;
+        my $args = $fn->{arguments};
+
+        # Some providers send arguments as a JSON string, others send a hashref
+        $args = decode_json($args) if defined $args && !ref $args;
+
+        push @tool_calls, { name => $name, arguments => $args // {} };
+    }
+
+    return undef unless @tool_calls;
+    return { type => 'tool_call', tool_calls => \@tool_calls, raw_message => $raw_message };
+}
+
 =head2 _do_chat
 
     my $reply = $self->_do_chat(\@messages);

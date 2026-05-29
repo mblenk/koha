@@ -46,13 +46,13 @@ history is managed by the caller — full history is passed in and the updated h
 use Modern::Perl;
 
 use URI::Escape qw( uri_escape_utf8 );
+use Encode      qw(decode_utf8);
 
 use Koha::SearchEngine;
 use Koha::SearchEngine::Search;
 use Koha::SearchEngine::LLMClient;
 
-use constant TOP_N                       => 5;
-use constant NORMALISATION_HISTORY_TURNS => 3;    # up to 3 user+assistant pairs = 6 messages
+use constant TOP_N => 5;
 use constant CATALOGUE_PREAMBLE =>
     "You are a library catalogue assistant. Help users discover items in this specific library's collection.\n"
     . "STRICT RULE: You may only mention titles, authors, and works that appear in the catalogue search results "
@@ -62,17 +62,33 @@ use constant CATALOGUE_PREAMBLE =>
     . "When results are shown: describe how the found items relate to the user's topic. "
     . "When no results are found or results seem off-target: say so clearly and suggest how the user might "
     . "rephrase or broaden their search. Never answer factual questions directly.";
-use constant NORMALISATION_PROMPT =>
-    "You are a multilingual library search query normaliser with access to the conversation history shown above.\n"
-    . "Your task has two steps:\n"
-    . "1. RESOLVE: If the new query contains pronouns or references that depend on earlier turns "
-    . "(e.g. \"his\", \"her\", \"their\", \"this author\", \"those\", \"the same topic\", \"what about ...\"), "
-    . "replace them with the specific entities named in the conversation history.\n"
-    . "2. NORMALISE: From the resolved query, extract only the core subject matter as a concise natural search phrase. "
-    . "Strip conversational preamble and filler (phrases meaning \"I want to find\", \"Can you show me\", "
-    . "\"I'm looking for\", and their equivalents in any language). "
-    . "Remove generic library terms such as \"books\", \"articles\", \"resources\" and their equivalents.\n"
-    . "Return only the final phrase — no explanation, no trailing punctuation, in the same language as the input.";
+use constant TOOLS => [
+    {
+        type     => 'function',
+        function => {
+            name        => 'search_catalogue',
+            description => 'Search the library catalogue for books and materials. '
+                . 'Always call this before responding to the user.',
+            parameters => {
+                type       => 'object',
+                properties => {
+                    query => {
+                        type        => 'string',
+                        description => 'Concise search phrase capturing the subject',
+                    },
+                    strategy => {
+                        type        => 'string',
+                        enum        => [ 'semantic', 'keyword', 'hybrid' ],
+                        description => 'semantic: topics/concepts; '
+                            . 'keyword: exact names, titles, ISBNs; '
+                            . 'hybrid: combines both',
+                    },
+                },
+                required => [ 'query', 'strategy' ],
+            },
+        },
+    }
+];
 
 =head1 METHODS
 
@@ -124,100 +140,117 @@ sub converse {
     my $history = $args{history} // [];
 
     my $client = Koha::SearchEngine::LLMClient->new;
+    my $extra  = $client->system_prompt // '';
+    my $system = CATALOGUE_PREAMBLE;
+    $system .= "\n\n$extra" if length $extra;
 
-    my $norm_history = do {
-        my $max   = NORMALISATION_HISTORY_TURNS * 2;
-        my $start = @$history > $max ? @$history - $max : 0;
-        [ @{$history}[ $start .. $#$history ] ];
-    };
+    my @messages   = ( @$history, { role => 'user', content => $query } );
+    my $results    = [];
+    my $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($query) . '&semantic=1';
 
-    my $search_query = $self->_normalise_query( $query, $client, $norm_history );
-warn "Normalised: $search_query";
-    my $results      = $self->_run_search($search_query);
-    my $context      = $self->_format_context( $query, $results );
+    my $iterations = 0;
+    my $response   = $client->chat_with_tools( \@messages, $system, TOOLS );
 
-    my $extra         = $client->system_prompt // '';
-    my $system_prompt = CATALOGUE_PREAMBLE;
-    $system_prompt .= "\n\n$extra" if length $extra;
+    while ( $response && $response->{type} eq 'tool_call' && $iterations++ < 3 ) {
+        for my $call ( @{ $response->{tool_calls} } ) {
+            next unless $call->{name} eq 'search_catalogue';
+            my $targs = $call->{arguments};
+            $results = $self->_run_search( $targs->{query}, $targs->{strategy} );
+            my $context = $self->_format_context( $targs->{query}, $results );
+            $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8( $targs->{query} ) . '&semantic=1';
 
-    my @messages = (
-        @$history,
-        { role => 'user', content => $context },
-    );
+            push @messages, $response->{raw_message};
+            push @messages, { role => 'tool', content => $context };
+        }
+        $response = $client->chat_with_tools( \@messages, $system, TOOLS );
+    }
 
-    my $reply = $client->chat( \@messages, $system_prompt );
-    return undef unless defined $reply;
+    return undef unless $response && $response->{type} eq 'text';
 
+    my $decoded_reply   = decode_utf8( $response->{reply} );
     my @updated_history = (
         @$history,
         { role => 'user',      content => $query },
-        { role => 'assistant', content => $reply },
+        { role => 'assistant', content => $decoded_reply },
     );
 
     return {
-        reply        => $reply,
+        reply        => $decoded_reply,
         results      => $results,
         conversation => \@updated_history,
-        search_url   => $self->{_search_url} . '?q=' . uri_escape_utf8($search_query) . '&semantic=1',
+        search_url   => $search_url,
     };
 }
 
 =head2 _run_search
 
-    my $results = $self->_run_search($query);
+    my $results = $self->_run_search( $query, $strategy );
 
-Runs a semantic search against the bibliographic index and returns an arrayref
-of record summary hashrefs (see L</_record_summary>). Returns an empty arrayref
-on error or when no results are found.
+Searches the bibliographic index using the given strategy (C<semantic>,
+C<keyword>, or C<hybrid>) and returns an arrayref of record summary hashrefs
+(see L</_record_summary>). Returns an empty arrayref on error or when no
+results are found. Defaults to C<semantic> if strategy is omitted.
 
 =cut
 
 sub _run_search {
-    my ( $self, $query ) = @_;
+    my ( $self, $query, $strategy ) = @_;
+    $strategy //= 'semantic';
 
     my $searcher = Koha::SearchEngine::Search->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
+    my $fetch_n  = $strategy eq 'hybrid' ? $self->{_top_n} * 2 : $self->{_top_n};
 
-    my ( $error, $results_hashref ) = $searcher->semantic_search( $query, $self->{_top_n}, 0 );
-    return [] if $error || !$results_hashref;
+    my @semantic_results;
+    my @keyword_results;
 
-    my $server_results = $results_hashref->{biblioserver} or return [];
-    my $records        = $server_results->{RECORDS}       or return [];
-
-    my @search_results;
-    for my $record ( @{$records} ) {
-        next unless $record;
-        push @search_results, _record_summary($record);
+    if ( $strategy eq 'semantic' || $strategy eq 'hybrid' ) {
+        my ( $error, $results_hashref ) = $searcher->semantic_search( $query, $fetch_n, 0 );
+        unless ( $error || !$results_hashref ) {
+            my $server  = $results_hashref->{biblioserver};
+            my $records = $server ? $server->{RECORDS} : undef;
+            if ($records) {
+                for my $record (@$records) {
+                    next unless $record;
+                    push @semantic_results, _record_summary($record);
+                }
+            }
+        }
+        splice @semantic_results, $fetch_n if @semantic_results > $fetch_n;
     }
-    return \@search_results;
-}
 
-=head2 _normalise_query
+    if ( $strategy eq 'keyword' || $strategy eq 'hybrid' ) {
+        my ( $error, $records ) = $searcher->simple_search_compat( $query, 0, $fetch_n );
+        unless ( $error || !$records ) {
+            for my $record (@$records) {
+                next unless $record;
+                push @keyword_results, _record_summary($record);
+            }
+        }
+        splice @keyword_results, $fetch_n if @keyword_results > $fetch_n;
+    }
 
-    my $search_query = $self->_normalise_query( $query, $client, $history );
+    return \@semantic_results if $strategy eq 'semantic';
+    return \@keyword_results  if $strategy eq 'keyword';
 
-Resolves contextual references (pronouns, anaphora) against C<$history> and
-extracts the core subject-matter keywords from the query. Returns the original
-C<$query> unchanged if the query is already concise (four words or fewer) and
-history is empty, or if the LLM call fails.
-
-=cut
-
-sub _normalise_query {
-    my ( $self, $query, $client, $history ) = @_;
-
-    my @words = split /\s+/, $query;
-    return $query if @words <= 4 && !@$history;
-
-    my $normalised = $client->chat(
-        [ @$history, { role => 'user', content => $query } ],
-        NORMALISATION_PROMPT,
-    );
-    return $query unless defined $normalised;
-
-    $normalised =~ s/\n.*//s;
-    $normalised =~ s/^\s+|\s+$//g;
-    $normalised =~ s/[.!?,;:]+$//;
-    return length $normalised ? $normalised : $query;
+    # Hybrid: Reciprocal Rank Fusion — score = Σ 1/(k+rank) across lists, k=60 is conventional
+    my ( %scores, %summaries );
+    my $k = 60;
+    my $i = 0;
+    for my $r (@semantic_results) {
+        $scores{ $r->{biblio_id} } += 1 / ( $k + ++$i );
+        $summaries{ $r->{biblio_id} } //= $r;
+    }
+    $i = 0;
+    for my $r (@keyword_results) {
+        $scores{ $r->{biblio_id} } += 1 / ( $k + ++$i );
+        $summaries{ $r->{biblio_id} } //= $r;
+    }
+    my @merged =
+        map  { $summaries{$_} }
+        sort { $scores{$b} <=> $scores{$a} }
+        keys %scores;
+    splice @merged, $self->{_top_n} if @merged > $self->{_top_n};
+    return \@merged;
 }
 
 =head2 _record_summary
