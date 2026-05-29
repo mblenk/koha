@@ -215,7 +215,6 @@ sub _handle_chat_with_tools {
 
     my $body     = $self->_build_request_body_with_tools( $messages, $system_prompt, $tools );
     my $response = $self->_make_request($body);
-    die "HTTP " . $response->status_line unless $response->is_success;
 
     my $data   = decode_json( $response->decoded_content );
     my $result = $self->_extract_tool_calls($data);
@@ -324,7 +323,6 @@ sub _do_chat {
 
     my $body     = $self->_build_request_body( $messages, $system_prompt );
     my $response = $self->_make_request($body);
-    die "HTTP " . $response->status_line unless $response->is_success;
 
     my $data  = decode_json( $response->decoded_content );
     my $reply = $self->_resolve_path( $data, $self->{_response_key} );

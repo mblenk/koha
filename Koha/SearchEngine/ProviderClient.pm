@@ -35,6 +35,7 @@ minimum: C<_url>, C<_api_key>, C<_auth_type>, and C<_ua>.
 
 use Modern::Perl;
 
+use Try::Tiny qw( catch try );
 use HTTP::Request;
 use LWP::UserAgent;
 
@@ -57,7 +58,17 @@ sub _make_request {
     $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
         if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
     $req->content($body);
-    return $self->{_ua}->request($req);
+
+    my $response = try {
+        $self->{_ua}->request($req);
+    } catch {
+        die "Network error contacting provider API: $_";
+    };
+
+    die "Provider API request failed: " . $response->status_line
+        unless $response->is_success;
+
+    return $response;
 }
 
 =head2 _resolve_path
