@@ -26,119 +26,34 @@
 
                 <!-- LLM chat mode -->
                 <template v-if="isLlmAvailable">
-                    <div
-                        ref="chatBody"
-                        class="modal-body"
-                        style="max-height: 420px; overflow-y: auto"
-                    >
-                        <div v-if="isFirstMessage" class="text-muted">
-                            <p>
-                                {{
-                                    $__(
-                                        "Ask me what you're looking for in the library catalog."
-                                    )
-                                }}
+                    <!-- History view -->
+                    <template v-if="view === 'history'">
+                        <div class="modal-body">
+                            <div
+                                v-if="savedConversations.length"
+                                class="list-group list-group-flush"
+                            >
+                                <button
+                                    v-for="conv in savedConversations"
+                                    :key="conv.id"
+                                    class="list-group-item list-group-item-action d-flex justify-content-between align-items-start"
+                                    @click="resumeConversation(conv.id)"
+                                >
+                                    <span class="text-truncate me-2">{{
+                                        conv.title
+                                    }}</span>
+                                    <small class="text-muted text-nowrap">{{
+                                        formatDate(conv.last_updated)
+                                    }}</small>
+                                </button>
+                            </div>
+                            <p v-else class="text-muted">
+                                {{ $__("No previous conversations.") }}
                             </p>
                         </div>
                         <div
-                            v-for="(turn, i) in conversation"
-                            :key="i"
-                            :class="[
-                                'd-flex',
-                                'mb-2',
-                                turn.role === 'user'
-                                    ? 'justify-content-end'
-                                    : 'justify-content-start',
-                            ]"
+                            class="modal-footer d-flex justify-content-between"
                         >
-                            <div
-                                :class="[
-                                    'px-3',
-                                    'py-2',
-                                    'rounded',
-                                    turn.role === 'user'
-                                        ? 'bg-primary text-white'
-                                        : 'bg-light border',
-                                ]"
-                                style="max-width: 85%; white-space: pre-wrap"
-                            >
-                                {{ turn.content }}
-                                <div v-if="turn.search_url" class="mt-2">
-                                    <a
-                                        :href="turn.search_url"
-                                        class="btn btn-sm btn-outline-primary"
-                                    >
-                                        {{ $__("See all results") }}
-                                    </a>
-                                </div>
-                            </div>
-                        </div>
-                        <ul
-                            v-if="results.length"
-                            class="list-group list-group-flush mt-2"
-                        >
-                            <li
-                                v-for="r in results"
-                                :key="r.biblio_id"
-                                class="list-group-item px-0"
-                            >
-                                <a
-                                    :href="biblioUrl(r.biblio_id)"
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                >
-                                    <strong>{{
-                                        r.title || $__("(no title)")
-                                    }}</strong>
-                                </a>
-                                <span v-if="r.author">
-                                    &mdash; {{ r.author }}</span
-                                >
-                                <span
-                                    v-if="r.publication_year"
-                                    class="text-muted"
-                                >
-                                    ({{ r.publication_year }})
-                                </span>
-                            </li>
-                        </ul>
-                        <div v-if="loading" class="text-muted mt-2">
-                            <em>{{ $__("Searching…") }}</em>
-                        </div>
-                        <div
-                            v-if="errorMsg"
-                            class="alert alert-danger mt-2"
-                            role="alert"
-                        >
-                            {{ errorMsg }}
-                        </div>
-                    </div>
-                    <div
-                        class="modal-footer flex-column align-items-stretch gap-2"
-                    >
-                        <div class="d-flex gap-2">
-                            <input
-                                ref="chatInput"
-                                v-model="query"
-                                type="text"
-                                class="form-control"
-                                :placeholder="
-                                    isFirstMessage
-                                        ? $__('Type your query')
-                                        : $__('Type your follow-up…')
-                                "
-                                :disabled="loading"
-                                @keyup.enter="sendMessage"
-                            />
-                            <button
-                                class="btn btn-primary"
-                                :disabled="loading || !query.trim()"
-                                @click="sendMessage"
-                            >
-                                {{ $__("Send") }}
-                            </button>
-                        </div>
-                        <div class="d-flex justify-content-between">
                             <button
                                 type="button"
                                 class="btn btn-secondary"
@@ -146,8 +61,160 @@
                             >
                                 {{ $__("Close") }}
                             </button>
+                            <button
+                                type="button"
+                                class="btn btn-primary"
+                                @click="startNewConversation"
+                            >
+                                {{ $__("New conversation") }}
+                            </button>
                         </div>
-                    </div>
+                    </template>
+
+                    <!-- Chat view -->
+                    <template v-else>
+                        <div
+                            ref="chatBody"
+                            class="modal-body"
+                            style="max-height: 420px; overflow-y: auto"
+                        >
+                            <div v-if="isFirstMessage" class="text-muted">
+                                <p>
+                                    {{
+                                        $__(
+                                            "Ask me what you're looking for in the library catalog."
+                                        )
+                                    }}
+                                </p>
+                            </div>
+                            <div
+                                v-for="(turn, i) in conversation"
+                                :key="i"
+                                :class="[
+                                    'd-flex',
+                                    'mb-2',
+                                    turn.role === 'user'
+                                        ? 'justify-content-end'
+                                        : 'justify-content-start',
+                                ]"
+                            >
+                                <div
+                                    :class="[
+                                        'px-3',
+                                        'py-2',
+                                        'rounded',
+                                        turn.role === 'user'
+                                            ? 'bg-primary text-white'
+                                            : 'bg-light border',
+                                    ]"
+                                    style="
+                                        max-width: 85%;
+                                        white-space: pre-wrap;
+                                    "
+                                >
+                                    {{ turn.content }}
+                                    <div v-if="turn.search_url" class="mt-2">
+                                        <a
+                                            :href="turn.search_url"
+                                            class="btn btn-sm btn-outline-primary"
+                                        >
+                                            {{ $__("See all results") }}
+                                        </a>
+                                    </div>
+                                </div>
+                            </div>
+                            <ul
+                                v-if="results.length"
+                                class="list-group list-group-flush mt-2"
+                            >
+                                <li
+                                    v-for="r in results"
+                                    :key="r.biblio_id"
+                                    class="list-group-item px-0"
+                                >
+                                    <a
+                                        :href="biblioUrl(r.biblio_id)"
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                    >
+                                        <strong>{{
+                                            r.title || $__("(no title)")
+                                        }}</strong>
+                                    </a>
+                                    <span v-if="r.author">
+                                        &mdash; {{ r.author }}</span
+                                    >
+                                    <span
+                                        v-if="r.publication_year"
+                                        class="text-muted"
+                                    >
+                                        ({{ r.publication_year }})
+                                    </span>
+                                </li>
+                            </ul>
+                            <div
+                                v-if="
+                                    loadingConversationId ===
+                                    currentConversationId
+                                "
+                                class="text-muted mt-2"
+                            >
+                                <em>{{ $__("Searching…") }}</em>
+                            </div>
+                            <div
+                                v-if="errorMsg"
+                                class="alert alert-danger mt-2"
+                                role="alert"
+                            >
+                                {{ errorMsg }}
+                            </div>
+                        </div>
+                        <div
+                            class="modal-footer flex-column align-items-stretch gap-2"
+                        >
+                            <div class="d-flex gap-2">
+                                <input
+                                    ref="chatInput"
+                                    v-model="query"
+                                    type="text"
+                                    class="form-control"
+                                    :placeholder="
+                                        isFirstMessage
+                                            ? $__('Type your query')
+                                            : $__('Type your follow-up…')
+                                    "
+                                    :disabled="loadingConversationId !== null"
+                                    @keyup.enter="sendMessage"
+                                />
+                                <button
+                                    class="btn btn-primary"
+                                    :disabled="
+                                        loadingConversationId !== null ||
+                                        !query.trim()
+                                    "
+                                    @click="sendMessage"
+                                >
+                                    {{ $__("Send") }}
+                                </button>
+                            </div>
+                            <div class="d-flex justify-content-between">
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary"
+                                    data-bs-dismiss="modal"
+                                >
+                                    {{ $__("Close") }}
+                                </button>
+                                <button
+                                    type="button"
+                                    class="btn btn-secondary"
+                                    @click="view = 'history'"
+                                >
+                                    {{ $__("All conversations") }}
+                                </button>
+                            </div>
+                        </div>
+                    </template>
                 </template>
 
                 <!-- Simple redirect mode -->
@@ -211,10 +278,14 @@ export default {
         const query = ref("");
         const conversation = ref([]);
         const results = ref([]);
-        const loading = ref(false);
+        const loadingConversationId = ref(null);
         const errorMsg = ref("");
         const chatBody = ref(null);
         const chatInput = ref(null);
+
+        const view = ref("history");
+        const savedConversations = ref([]);
+        const currentConversationId = ref(null);
 
         const storageKey = computed(() =>
             props.borrowerNumber
@@ -227,28 +298,83 @@ export default {
             try {
                 const stored = localStorage.getItem(storageKey.value);
                 if (stored) {
-                    const { conversation: c, results: r } = JSON.parse(stored);
-                    conversation.value = c || [];
-                    results.value = r || [];
+                    const { conversations } = JSON.parse(stored);
+                    savedConversations.value = conversations || [];
                 }
             } catch (_) {}
         };
 
         const saveToStorage = () => {
-            if (!storageKey.value) return;
+            if (!storageKey.value || !currentConversationId.value) return;
+            const title =
+                conversation.value
+                    .find(t => t.role === "user")
+                    ?.content?.slice(0, 60) || "…";
+            const now = new Date().toISOString();
+            const idx = savedConversations.value.findIndex(
+                c => c.id === currentConversationId.value
+            );
+            if (idx >= 0) {
+                savedConversations.value[idx] = {
+                    ...savedConversations.value[idx],
+                    title,
+                    last_updated: now,
+                    conversation: conversation.value,
+                    results: results.value,
+                };
+            } else {
+                savedConversations.value = [
+                    {
+                        id: currentConversationId.value,
+                        title,
+                        started_at: now,
+                        last_updated: now,
+                        conversation: conversation.value,
+                        results: results.value,
+                    },
+                    ...savedConversations.value,
+                ].slice(0, 20);
+            }
             try {
                 localStorage.setItem(
                     storageKey.value,
-                    JSON.stringify({
-                        conversation: conversation.value,
-                        results: results.value,
-                    })
+                    JSON.stringify({ conversations: savedConversations.value })
                 );
             } catch (_) {}
         };
 
         watch(conversation, saveToStorage, { deep: true });
         watch(results, saveToStorage, { deep: true });
+
+        const scrollToBottom = async () => {
+            await nextTick();
+            if (chatBody.value) {
+                chatBody.value.scrollTop = chatBody.value.scrollHeight;
+            }
+        };
+
+        const startNewConversation = () => {
+            currentConversationId.value = Date.now().toString();
+            conversation.value = [];
+            results.value = [];
+            errorMsg.value = "";
+            view.value = "chat";
+            nextTick(() => chatInput.value?.focus());
+        };
+
+        const resumeConversation = id => {
+            const entry = savedConversations.value.find(c => c.id === id);
+            if (!entry) return;
+            currentConversationId.value = id;
+            conversation.value = entry.conversation;
+            results.value = entry.results;
+            errorMsg.value = "";
+            view.value = "chat";
+            nextTick(() => scrollToBottom());
+        };
+
+        const formatDate = isoString =>
+            window.$date(isoString, { withtime: true });
 
         onMounted(() => {
             loadFromStorage();
@@ -257,7 +383,11 @@ export default {
             if (!modalEl) return;
             modalEl.addEventListener("shown.bs.modal", () => {
                 if (isLlmAvailable.value) {
-                    chatInput.value?.focus();
+                    if (savedConversations.value.length > 0) {
+                        view.value = "history";
+                    } else {
+                        startNewConversation();
+                    }
                 } else {
                     document.getElementById("semanticSearchQuery")?.focus();
                 }
@@ -265,6 +395,7 @@ export default {
             modalEl.addEventListener("hidden.bs.modal", () => {
                 query.value = "";
                 errorMsg.value = "";
+                view.value = "history";
             });
 
             document.querySelectorAll("#logout, .logout").forEach(el => {
@@ -276,18 +407,13 @@ export default {
             });
         });
 
-        const scrollToBottom = async () => {
-            await nextTick();
-            if (chatBody.value) {
-                chatBody.value.scrollTop = chatBody.value.scrollHeight;
-            }
-        };
-
         const sendMessage = async () => {
             const messageQuery = query.value.trim();
-            if (!messageQuery || loading.value) return;
+            if (!messageQuery || loadingConversationId.value !== null) return;
 
-            loading.value = true;
+            const sentConversationId = currentConversationId.value;
+
+            loadingConversationId.value = sentConversationId;
             errorMsg.value = "";
             results.value = [];
             query.value = "";
@@ -312,6 +438,35 @@ export default {
                     historyPayload,
                     searchLocation
                 );
+                if (currentConversationId.value !== sentConversationId) {
+                    const idx = savedConversations.value.findIndex(
+                        c => c.id === sentConversationId
+                    );
+                    if (idx >= 0) {
+                        savedConversations.value[idx] = {
+                            ...savedConversations.value[idx],
+                            last_updated: new Date().toISOString(),
+                            conversation: [
+                                ...savedConversations.value[idx].conversation,
+                                {
+                                    role: "assistant",
+                                    content: data.reply,
+                                    search_url: data.search_url || null,
+                                },
+                            ],
+                            results: data.results || [],
+                        };
+                        try {
+                            localStorage.setItem(
+                                storageKey.value,
+                                JSON.stringify({
+                                    conversations: savedConversations.value,
+                                })
+                            );
+                        } catch (_) {}
+                    }
+                    return;
+                }
                 conversation.value = [
                     ...conversation.value,
                     {
@@ -322,11 +477,12 @@ export default {
                 ];
                 results.value = data.results || [];
             } catch (e) {
+                if (currentConversationId.value !== sentConversationId) return;
                 errorMsg.value = $__(
                     "Sorry, something went wrong. Please try again."
                 );
             } finally {
-                loading.value = false;
+                loadingConversationId.value = null;
                 await scrollToBottom();
             }
         };
@@ -339,7 +495,10 @@ export default {
         };
 
         const isFirstMessage = computed(() => {
-            return !conversation.value.length && !loading.value;
+            return (
+                !conversation.value.length &&
+                loadingConversationId.value !== currentConversationId.value
+            );
         });
 
         const isOpac = computed(() => props.searchUrl.includes("opac"));
@@ -356,7 +515,8 @@ export default {
             query,
             conversation,
             results,
-            loading,
+            loadingConversationId,
+            currentConversationId,
             errorMsg,
             chatBody,
             chatInput,
@@ -364,6 +524,11 @@ export default {
             submit,
             isFirstMessage,
             biblioUrl,
+            view,
+            savedConversations,
+            startNewConversation,
+            resumeConversation,
+            formatDate,
         };
     },
 };
