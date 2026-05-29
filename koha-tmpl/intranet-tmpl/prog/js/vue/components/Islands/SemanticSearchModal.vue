@@ -82,9 +82,15 @@
                                 :key="r.biblio_id"
                                 class="list-group-item px-0"
                             >
-                                <strong>{{
-                                    r.title || $__("(no title)")
-                                }}</strong>
+                                <a
+                                    :href="biblioUrl(r.biblio_id)"
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                >
+                                    <strong>{{
+                                        r.title || $__("(no title)")
+                                    }}</strong>
+                                </a>
                                 <span v-if="r.author">
                                     &mdash; {{ r.author }}</span
                                 >
@@ -295,6 +301,15 @@ export default {
             return !conversation.value.length && !loading.value;
         });
 
+        const isOpac = computed(() => props.searchUrl.includes("opac"));
+
+        const biblioUrl = biblioId => {
+            if (isOpac.value) {
+                return `/cgi-bin/koha/opac-detail.pl?biblionumber=${biblioId}`;
+            }
+            return `/cgi-bin/koha/catalogue/detail.pl?biblionumber=${biblioId}`;
+        };
+
         return {
             isLlmAvailable,
             query,
@@ -307,6 +322,7 @@ export default {
             sendMessage,
             submit,
             isFirstMessage,
+            biblioUrl,
         };
     },
 };
