@@ -694,7 +694,7 @@ sub semantic_search {
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
     my $body = {
-        min_score => 1.3,
+        min_score => 1.6,
         query     => {
             script_score => {
                 query  => { bool => { filter => { exists => { field => 'embedding' } } } },
