@@ -160,7 +160,7 @@ export default {
                     type: "text",
                     label: $__("System prompt"),
                     toolTip: $__(
-                        "Optional: override the default library search assistant prompt injected at the start of every conversation."
+                        "Optional: add supplementary instructions appended after the built-in catalogue assistant role — e.g. your library's name, preferred tone, or subject focus. The core behaviour (describing catalogue items rather than answering questions directly) is always enforced and cannot be overridden here."
                     ),
                     hideIn: ["List"],
                 },

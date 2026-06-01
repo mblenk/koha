@@ -51,9 +51,14 @@ use Koha::SearchEngine;
 use Koha::SearchEngine::Search;
 use Koha::SearchEngine::LLMClient;
 
-use constant TOP_N          => 5;
-use constant DEFAULT_SYSTEM_PROMPT => <<'END';
-You are a library catalogue search assistant. You have been given the top search results for the user's query. Briefly summarise the most relevant findings in 2-3 sentences, then ask whether the user would like to refine the search or see all results. Be concise and helpful.
+use constant TOP_N              => 5;
+use constant CATALOGUE_PREAMBLE => <<'END';
+You are a library catalogue assistant. Your role is to help users discover books
+and materials in the library collection — not to answer their questions directly.
+When shown catalogue search results, briefly describe the items found and how they
+relate to the user's topic. If results look relevant, say so. If they seem
+off-target, suggest how the user might refine their search. Never provide factual
+answers to questions; instead, point to library resources the user can explore.
 END
 
 =head1 METHODS
@@ -110,9 +115,9 @@ sub converse {
 
     my $client = Koha::SearchEngine::LLMClient->new;
 
-    my $system_prompt = length( $client->system_prompt )
-        ? $client->system_prompt
-        : DEFAULT_SYSTEM_PROMPT;
+    my $extra         = $client->system_prompt // '';
+    my $system_prompt = CATALOGUE_PREAMBLE;
+    $system_prompt .= "\n\n$extra" if length $extra;
 
     my @messages = (
         @$history,
@@ -124,7 +129,6 @@ sub converse {
 
     my @updated_history = (
         @$history,
-        { role => 'user',      content => $context },
         { role => 'assistant', content => $reply },
     );
 
@@ -227,19 +231,19 @@ string suitable for inclusion in an LLM prompt. Returns a plain text string.
 sub _format_context {
     my ( $self, $query, $results ) = @_;
 
-    my $context = "The user is searching for: $query\n\n";
+    my $context = "You searched the library catalogue for: \"$query\"\n\n";
 
     if ( !@$results ) {
         $context .= "No results were found for this query.";
         return $context;
     }
 
-    $context .= "Top " . scalar(@$results) . " catalogue results:\n";
+    $context .= "Catalogue items found:\n";
     my $i = 1;
     for my $r (@$results) {
         $context .= "$i. ";
-        $context .= $r->{title}  ? "\"$r->{title}\"" : "(no title)";
-        $context .= " by $r->{author}"           if $r->{author};
+        $context .= $r->{title} ? "\"$r->{title}\"" : "(no title)";
+        $context .= " by $r->{author}"          if $r->{author};
         $context .= " ($r->{publication_year})" if $r->{publication_year};
         $context .= "\n";
         $i++;
