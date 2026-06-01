@@ -241,12 +241,7 @@ sub build_query {
 
         # See _convert_facets in Search.pm for how these get turned into
         # things that Koha can use.
-        my $size   = C4::Context->preference('FacetMaxCount');
-        my @facets = Koha::SearchEngine::Elasticsearch->get_facet_fields;
-        for my $f (@facets) {
-            my $name = $f->name;
-            $res->{aggregations}->{$name} = { terms => { field => "${name}__facet", size => $size } };
-        }
+        $res->{aggregations} = $self->_build_facet_aggregations;
 
     }
 

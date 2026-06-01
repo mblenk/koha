@@ -673,7 +673,9 @@ error string (and C<undef> results) gracefully on any failure.
 =cut
 
 sub semantic_search {
-    my ( $self, $query_text, $results_per_page, $offset, %opts ) = @_;
+    my ( $self, $query_text, $results_per_page, $offset, $opts ) = @_;
+    $opts //= {};
+    my $limits = $opts->{limits} // [];
 
     return ( "AgentSearchEnabled is off", undef, [] )
         unless C4::Context->preference('AgentSearchEnabled');
@@ -693,19 +695,34 @@ sub semantic_search {
     my $vector = Koha::SearchEngine::Embedder->new->embed_query($query_text);
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
+    my $inner_query;
+    if (@$limits) {
+        my $qb = Koha::SearchEngine::QueryBuilder->new( { index => $self->index } );
+        ( undef, my $limit_query ) = $qb->build_query_compat( undef, [], undef, $limits );
+        $inner_query = {
+            bool => {
+                must   => [ $limit_query->{query} ],
+                filter => [ { exists => { field => 'embedding' } } ],
+            }
+        };
+    } else {
+        $inner_query = { bool => { filter => { exists => { field => 'embedding' } } } };
+    }
+
     my $body = {
         min_score => 1.6,
         query     => {
             script_score => {
-                query  => { bool => { filter => { exists => { field => 'embedding' } } } },
+                query  => $inner_query,
                 script => {
                     source => "cosineSimilarity(params.query_vector, 'embedding') + 1.0",
                     params => { query_vector => $vector },
                 },
             },
         },
-        size => $results_per_page,
-        from => $offset,
+        size         => $results_per_page,
+        from         => $offset,
+        aggregations => $self->_build_facet_aggregations,
     };
 
     my $results = eval {
@@ -729,6 +746,12 @@ sub semantic_search {
         $i++;
     }
 
+    my $facets = $self->_convert_facets( $results->{aggregations} ) // [];
+    if ( C4::Context->interface eq 'opac' ) {
+        my $rules = C4::Context->yaml_preference('OpacHiddenItems');
+        $facets = Koha::SearchEngine::Search->post_filter_opac_facets( { facets => $facets, rules => $rules } );
+    }
+
     return (
         undef,
         {
@@ -738,7 +761,7 @@ sub semantic_search {
                 scores  => \@scores,
             }
         },
-        []
+        $facets,
     );
 }
 
@@ -755,51 +778,64 @@ L</semantic_search> so the existing display pipeline in search.pl works unchange
 =cut
 
 sub hybrid_search {
-    my ( $self, $sem_query, $kw_query, $results_per_page, $offset ) = @_;
+    my ( $self, $sem_query, $kw_query, $results_per_page, $offset, $opts ) = @_;
+    $opts //= {};
+    my $limits = $opts->{limits} // [];
     $kw_query         //= $sem_query;
     $sem_query        //= $kw_query;
     $results_per_page //= 20;
     $offset           //= 0;
     my $fetch_n = $results_per_page * 2;
 
-    my ( $sem_error, $sem_hashref, $facets ) = $self->semantic_search( $sem_query, $fetch_n, 0 );
+    my ( $sem_error, $sem_hashref ) = $self->semantic_search( $sem_query, $fetch_n, 0, { limits => $limits } );
     my @sem_records =
         ( !$sem_error && $sem_hashref )
-        ? @{ $sem_hashref->{biblioserver}{RECORDS} // [] }
+        ? @{ $sem_hashref->{biblioserver}->{RECORDS} // [] }
         : ();
 
-    my ( $kw_error, $kw_records ) = $self->simple_search_compat( $kw_query, 0, $fetch_n );
-    my @kw_records = ( !$kw_error && $kw_records ) ? @$kw_records : ();
+    my $qb = Koha::SearchEngine::QueryBuilder->new( { index => $self->index } );
+    ( undef, my $kw_es_query ) = $qb->build_query_compat( undef, [$kw_query], undef, $limits );
+    my $kw_results = eval { $self->search( $kw_es_query, undef, $fetch_n, offset => 0 ) };
+    my @kw_records =
+        ( !$@ && $kw_results )
+        ? map { $self->decode_record_from_result( $_->{_source} ) } @{ $kw_results->{hits}->{hits} }
+        : ();
 
-    my ( %scores, %record_map );
+    my ( $scores, $record_map ) = ( {}, {} );
     my $k = 60;
     my $i = 0;
     for my $r (@sem_records) {
         next unless $r;
         my $f  = $r->field('999');
         my $id = $f ? ( $f->subfield('c') // '' ) : '';
-        $scores{$id} += 1 / ( $k + ++$i );
-        $record_map{$id} //= $r;
+        $scores->{$id} += 1 / ( $k + ++$i );
+        $record_map->{$id} //= $r;
     }
     $i = 0;
     for my $r (@kw_records) {
         next unless $r;
         my $f  = $r->field('999');
         my $id = $f ? ( $f->subfield('c') // '' ) : '';
-        $scores{$id} += 1 / ( $k + ++$i );
-        $record_map{$id} //= $r;
+        $scores->{$id} += 1 / ( $k + ++$i );
+        $record_map->{$id} //= $r;
     }
 
     my @merged =
-        map  { $record_map{$_} }
-        sort { $scores{$b} <=> $scores{$a} }
-        keys %scores;
+        map  { $record_map->{$_} }
+        sort { $scores->{$b} <=> $scores->{$a} }
+        keys %$scores;
     splice @merged, $results_per_page if @merged > $results_per_page;
+
+    my $facets = $self->_convert_facets( $kw_results ? $kw_results->{aggregations} : undef ) // [];
+    if ( C4::Context->interface eq 'opac' ) {
+        my $rules = C4::Context->yaml_preference('OpacHiddenItems');
+        $facets = Koha::SearchEngine::Search->post_filter_opac_facets( { facets => $facets, rules => $rules } );
+    }
 
     return (
         undef,
         { biblioserver => { hits => scalar @merged, RECORDS => \@merged, scores => [] } },
-        $facets // [],
+        $facets,
     );
 }
 

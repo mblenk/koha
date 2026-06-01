@@ -557,12 +557,12 @@ if ( $strategy eq 'hybrid' && $agent_search_enabled ) {
     eval {
         my $sem_q = $semantic_q || $operands[0] // '';
         ( $error, $results_hashref, $facets ) =
-            $searcher->hybrid_search( $sem_q, $operands[0] // '', $results_per_page, $offset );
+            $searcher->hybrid_search( $sem_q, $operands[0] // '', $results_per_page, $offset, { limits => \@limits } );
     };
 } elsif ( $strategy eq 'semantic' && $agent_search_enabled ) {
     eval {
         ( $error, $results_hashref, $facets ) =
-            $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
+            $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset, { limits => \@limits } );
     };
 } else {
     eval {

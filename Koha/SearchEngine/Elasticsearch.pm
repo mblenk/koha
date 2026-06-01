@@ -1623,6 +1623,26 @@ sub get_facet_fields {
     return Koha::SearchFields->search( { facet_order => { '!=' => undef } }, { order_by => ['facet_order'] } )->as_list;
 }
 
+=head2 _build_facet_aggregations
+
+    my $aggs = $self->_build_facet_aggregations;
+
+Returns a hashref of Elasticsearch aggregation definitions for all faceted
+search fields, suitable for inclusion in a query body.
+
+=cut
+
+sub _build_facet_aggregations {
+    my ($self) = @_;
+    my $size = C4::Context->preference('FacetMaxCount');
+    return {
+        map {
+            my $name = $_->name;
+            $name => { terms => { field => "${name}__facet", size => $size } }
+        } $self->get_facet_fields
+    };
+}
+
 =head2 clear_search_fields_cache
 
 Koha::SearchEngine::Elasticsearch->clear_search_fields_cache();
