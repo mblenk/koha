@@ -742,4 +742,65 @@ sub semantic_search {
     );
 }
 
+=head2 hybrid_search
+
+    my ( $error, $results_hashref, $facets ) =
+        $self->hybrid_search( $sem_query, $kw_query, $results_per_page, $offset );
+
+Runs both a semantic (vector) search using C<$sem_query> and a keyword search
+using C<$kw_query>, then merges the results using Reciprocal Rank Fusion (k=60).
+Returns the same C<($error, $results_hashref, $facets)> structure as
+L</semantic_search> so the existing display pipeline in search.pl works unchanged.
+
+=cut
+
+sub hybrid_search {
+    my ( $self, $sem_query, $kw_query, $results_per_page, $offset ) = @_;
+    $kw_query         //= $sem_query;
+    $sem_query        //= $kw_query;
+    $results_per_page //= 20;
+    $offset           //= 0;
+    my $fetch_n = $results_per_page * 2;
+
+    my ( $sem_error, $sem_hashref, $facets ) = $self->semantic_search( $sem_query, $fetch_n, 0 );
+    my @sem_records =
+        ( !$sem_error && $sem_hashref )
+        ? @{ $sem_hashref->{biblioserver}{RECORDS} // [] }
+        : ();
+
+    my ( $kw_error, $kw_records ) = $self->simple_search_compat( $kw_query, 0, $fetch_n );
+    my @kw_records = ( !$kw_error && $kw_records ) ? @$kw_records : ();
+
+    my ( %scores, %record_map );
+    my $k = 60;
+    my $i = 0;
+    for my $r (@sem_records) {
+        next unless $r;
+        my $f  = $r->field('999');
+        my $id = $f ? ( $f->subfield('c') // '' ) : '';
+        $scores{$id} += 1 / ( $k + ++$i );
+        $record_map{$id} //= $r;
+    }
+    $i = 0;
+    for my $r (@kw_records) {
+        next unless $r;
+        my $f  = $r->field('999');
+        my $id = $f ? ( $f->subfield('c') // '' ) : '';
+        $scores{$id} += 1 / ( $k + ++$i );
+        $record_map{$id} //= $r;
+    }
+
+    my @merged =
+        map  { $record_map{$_} }
+        sort { $scores{$b} <=> $scores{$a} }
+        keys %scores;
+    splice @merged, $results_per_page if @merged > $results_per_page;
+
+    return (
+        undef,
+        { biblioserver => { hits => scalar @merged, RECORDS => \@merged, scores => [] } },
+        $facets // [],
+    );
+}
+
 1;

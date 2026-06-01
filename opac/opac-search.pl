@@ -573,6 +573,18 @@ my $total = 0;    # the total results for the whole set
 my $facets;       # this object stores the faceted results that display on the left-hand of the results page
 my $results_hashref;
 
+my $strategy   = $cgi->param('strategy')   // '';
+my $semantic_q = $cgi->param('semantic_q') // '';
+
+my $agent_search_enabled = C4::Context->preference('AgentSearchEnabled');
+$strategy ||= 'semantic' if $cgi->param('semantic') && $agent_search_enabled;
+$strategy ||= 'keyword';
+
+my $semantic_mode = ( $strategy eq 'semantic' || $strategy eq 'hybrid' ) && $agent_search_enabled;
+my $embedding_reindex_in_progress =
+    $semantic_mode ? Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress : 0;
+$strategy = 'keyword' if $embedding_reindex_in_progress;
+
 if ($tag) {
     $query_cgi = "tag=" . uri_escape_utf8($tag) . "&" . $query_cgi;
     my $taglist = get_tags( { term => $tag, approved => 1 } );
@@ -584,17 +596,17 @@ if ($tag) {
     # FIXME: Because search and standard search don't work together OpacHiddenItems
     #        displays search results which should be hidden.
     # FIXME: No facets for tags search.
-} elsif ( $cgi->param('semantic') && C4::Context->preference('AgentSearchEnabled') ) {
-    my $embedding_reindex_in_progress = Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress;
-
-    if ($embedding_reindex_in_progress) {
-        $template->param( embedding_reindex_in_progress => 1 );
-    } else {
-        eval {
-            ( $error, $results_hashref, $facets ) =
-                $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
-        };
-    }
+} elsif ( $strategy eq 'hybrid' && $agent_search_enabled ) {
+    eval {
+        my $sem_q = $semantic_q || $operands[0] // '';
+        ( $error, $results_hashref, $facets ) =
+            $searcher->hybrid_search( $sem_q, $operands[0] // '', $results_per_page, $offset );
+    };
+} elsif ( $strategy eq 'semantic' && $agent_search_enabled ) {
+    eval {
+        ( $error, $results_hashref, $facets ) =
+            $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
+    };
 } else {
     my $json = JSON->new->utf8->allow_nonref(1);
     $pasarParams .= '&amp;query=' . uri_escape_utf8( $json->encode($query) );
@@ -617,7 +629,7 @@ if ( not $tag and ( $@ || $error ) ) {
     $query_error .= $error if $error;
     $query_error .= $@     if $@;
     $template->param( query_error                   => $query_error );
-    $template->param( embedding_reindex_in_progress => 0 );
+    $template->param( embedding_reindex_in_progress => $embedding_reindex_in_progress );
     output_html_with_http_headers $cgi, $cookie, $template->output;
     exit;
 }
@@ -840,7 +852,11 @@ for ( my $i = 0 ; $i < @servers ; $i++ ) {
             my $limit_cgi_not_availablity = $limit_cgi;
             $limit_cgi_not_availablity =~ s/&limit=available//g if defined $limit_cgi_not_availablity;
             $template->param( limit_cgi_not_availablity => $limit_cgi_not_availablity );
-            $query_cgi .= '&semantic=1' if $cgi->param('semantic') && C4::Context->preference('AgentSearchEnabled');
+            $query_cgi .= '&semantic=1' if $strategy eq 'semantic';
+            if ( $strategy eq 'hybrid' ) {
+                $query_cgi .= '&strategy=hybrid';
+                $query_cgi .= '&semantic_q=' . uri_escape_utf8($semantic_q) if $semantic_q;
+            }
             $template->param( limit_cgi  => $limit_cgi );
             $template->param( countrss   => $countRSS );
             $template->param( query_cgi  => $query_cgi );

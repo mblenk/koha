@@ -537,15 +537,29 @@ my $total = 0;    # the total results for the whole set
 my $facets;       # this object stores the faceted results that display on the left-hand of the results page
 my $results_hashref;
 
-my $server        = 'biblioserver';
-my $semantic_mode = $cgi->param('semantic')
-    && C4::Context->preference('AgentSearchEnabled');
+my $server     = 'biblioserver';
+my $strategy   = $cgi->param('strategy')   // '';
+my $semantic_q = $cgi->param('semantic_q') // '';
+
+my $agent_search_enabled = C4::Context->preference('AgentSearchEnabled');
+$strategy ||= 'semantic'
+    if $cgi->param('semantic') && $agent_search_enabled;
+$strategy ||= 'keyword';
+
+my $semantic_mode = ( $strategy eq 'semantic' || $strategy eq 'hybrid' )
+    && $agent_search_enabled;
 
 my $embedding_reindex_in_progress =
     $semantic_mode ? Koha::BackgroundJob::IndexBiblioEmbeddings->rebuild_in_progress : 0;
-$semantic_mode = 0 if $embedding_reindex_in_progress;
+$strategy = 'keyword' if $embedding_reindex_in_progress;
 
-if ($semantic_mode) {
+if ( $strategy eq 'hybrid' && $agent_search_enabled ) {
+    eval {
+        my $sem_q = $semantic_q || $operands[0] // '';
+        ( $error, $results_hashref, $facets ) =
+            $searcher->hybrid_search( $sem_q, $operands[0] // '', $results_per_page, $offset );
+    };
+} elsif ( $strategy eq 'semantic' && $agent_search_enabled ) {
     eval {
         ( $error, $results_hashref, $facets ) =
             $searcher->semantic_search( $operands[0] // '', $results_per_page, $offset );
@@ -656,7 +670,11 @@ if ( $total == 1 && !$scan && C4::Context->preference('RedirectToSoleResult') ) 
 # set up parameters if user wishes to re-run the search
 # as a Z39.50 search
 $template->param( z3950_search_params => C4::Search::z3950_search_args( $z3950par || $query_desc ) );
-$query_cgi .= '&semantic=1' if $semantic_mode;
+$query_cgi .= '&semantic=1' if $strategy eq 'semantic';
+if ( $strategy eq 'hybrid' ) {
+    $query_cgi .= '&strategy=hybrid';
+    $query_cgi .= '&semantic_q=' . uri_escape_utf8($semantic_q) if $semantic_q;
+}
 $template->param( limit_cgi => $limit_cgi );
 $template->param( query_cgi => $query_cgi );
 $template->param(

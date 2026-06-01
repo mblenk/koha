@@ -161,7 +161,7 @@ sub converse {
 
     my @messages   = ( @$history, { role => 'user', content => $query } );
     my $results    = [];
-    my $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($query) . '&semantic=1';
+    my $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($query);
 
     my $iterations = 0;
     my $response   = $client->chat_with_tools( \@messages, $system, TOOLS );
@@ -172,9 +172,15 @@ sub converse {
             my $targs     = $call->{arguments};
             my $sem_query = $targs->{semantic_query} // $targs->{query};
             my $kw_query  = $targs->{keyword_query}  // $targs->{query};
-            $results = $self->_run_search( $targs->{strategy}, $sem_query, $kw_query );
-            my $context = $self->_format_context( $sem_query, $results, $query );
-            $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($sem_query) . '&semantic=1';
+            my $strategy  = $targs->{strategy}       // 'semantic';
+            $results = $self->_run_search( $strategy, $sem_query, $kw_query );
+            my $context   = $self->_format_context( $sem_query, $results, $query );
+            my $url_query = ( $strategy eq 'semantic' ) ? $sem_query : $kw_query;
+            my $url_suffix =
+                  $strategy eq 'semantic' ? '&semantic=1'
+                : $strategy eq 'hybrid'   ? '&strategy=hybrid&semantic_q=' . uri_escape_utf8($sem_query)
+                :                           '';
+            $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($url_query) . $url_suffix;
 
             push @messages, $response->{raw_message};
             push @messages, { role => 'tool', content => $context };
@@ -222,59 +228,30 @@ sub _run_search {
     $kw_query  //= $sem_query;
 
     my $searcher = Koha::SearchEngine::Search->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
-    my $fetch_n  = $strategy eq 'hybrid' ? $self->{_top_n} * 2 : $self->{_top_n};
 
-    my @semantic_results;
-    my @keyword_results;
-
-    if ( $strategy eq 'semantic' || $strategy eq 'hybrid' ) {
-        my ( $error, $results_hashref ) = $searcher->semantic_search( $sem_query, $fetch_n, 0 );
-        unless ( $error || !$results_hashref ) {
-            my $server  = $results_hashref->{biblioserver};
-            my $records = $server ? $server->{RECORDS} : undef;
-            if ($records) {
-                for my $record (@$records) {
-                    next unless $record;
-                    push @semantic_results, _record_summary($record);
-                }
-            }
-        }
-        splice @semantic_results, $fetch_n if @semantic_results > $fetch_n;
+    if ( $strategy eq 'semantic' ) {
+        my ( $error, $results_hashref ) =
+            $searcher->semantic_search( $sem_query, $self->{_top_n}, 0 );
+        return [] if $error || !$results_hashref;
+        my $records = $results_hashref->{biblioserver}{RECORDS} // [];
+        return [ map { _record_summary($_) } grep { $_ } @$records ];
     }
 
-    if ( $strategy eq 'keyword' || $strategy eq 'hybrid' ) {
-        my ( $error, $records ) = $searcher->simple_search_compat( $kw_query, 0, $fetch_n );
-        unless ( $error || !$records ) {
-            for my $record (@$records) {
-                next unless $record;
-                push @keyword_results, _record_summary($record);
-            }
-        }
-        splice @keyword_results, $fetch_n if @keyword_results > $fetch_n;
+    if ( $strategy eq 'keyword' ) {
+        my ( $error, $records ) =
+            $searcher->simple_search_compat( $kw_query, 0, $self->{_top_n} );
+        return [] if $error || !$records;
+        return [ map { _record_summary($_) } grep { $_ } @$records ];
     }
 
-    return \@semantic_results if $strategy eq 'semantic';
-    return \@keyword_results  if $strategy eq 'keyword';
-
-    # Hybrid: Reciprocal Rank Fusion — score = Σ 1/(k+rank) across lists, k=60 is conventional
-    my ( %scores, %summaries );
-    my $k = 60;
-    my $i = 0;
-    for my $r (@semantic_results) {
-        $scores{ $r->{biblio_id} } += 1 / ( $k + ++$i );
-        $summaries{ $r->{biblio_id} } //= $r;
-    }
-    $i = 0;
-    for my $r (@keyword_results) {
-        $scores{ $r->{biblio_id} } += 1 / ( $k + ++$i );
-        $summaries{ $r->{biblio_id} } //= $r;
-    }
-    my @merged =
-        map  { $summaries{$_} }
-        sort { $scores{$b} <=> $scores{$a} }
-        keys %scores;
-    splice @merged, $self->{_top_n} if @merged > $self->{_top_n};
-    return \@merged;
+    # Hybrid: delegate to hybrid_search which runs both legs and applies RRF
+    my $fetch_n = $self->{_top_n} * 2;
+    my ( $error, $results_hashref ) = $searcher->hybrid_search( $sem_query, $kw_query, $fetch_n, 0 );
+    return [] if $error || !$results_hashref;
+    my $records = $results_hashref->{biblioserver}{RECORDS} // [];
+    my @results = map { _record_summary($_) } grep { $_ } @$records;
+    splice @results, $self->{_top_n} if @results > $self->{_top_n};
+    return \@results;
 }
 
 =head2 _record_summary
