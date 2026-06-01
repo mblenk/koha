@@ -74,14 +74,29 @@ use constant TOOLS => [
                 properties => {
                     query => {
                         type        => 'string',
-                        description => 'Concise search phrase capturing the subject',
+                        description => 'Primary search phrase — used as fallback for both searches '
+                            . 'when semantic_query or keyword_query are not provided.',
+                    },
+                    semantic_query => {
+                        type        => 'string',
+                        description => 'Optimised for vector/semantic search. A descriptive phrase '
+                            . '(2-5 words) capturing the topic and context '
+                            . '(e.g. "Tudor dynasty English monarchy").',
+                    },
+                    keyword_query => {
+                        type        => 'string',
+                        description => 'Optimised for keyword search. The single most distinctive word '
+                            . 'or at most two words — shorter is better because keyword search '
+                            . 'requires ALL words to appear in a record '
+                            . '(e.g. "Tudor" not "Tudor dynasty").',
                     },
                     strategy => {
                         type        => 'string',
                         enum        => [ 'semantic', 'keyword', 'hybrid' ],
-                        description => 'semantic: topics/concepts; '
-                            . 'keyword: exact names, titles, ISBNs; '
-                            . 'hybrid: combines both',
+                        description => 'hybrid: use for most searches; provide semantic_query and '
+                            . 'keyword_query separately for best results; '
+                            . 'semantic: vague or abstract concepts only; '
+                            . 'keyword: known exact titles, ISBNs, or precise author names.',
                     },
                 },
                 required => [ 'query', 'strategy' ],
@@ -154,13 +169,16 @@ sub converse {
     while ( $response && $response->{type} eq 'tool_call' && $iterations++ < 3 ) {
         for my $call ( @{ $response->{tool_calls} } ) {
             next unless $call->{name} eq 'search_catalogue';
-            my $targs = $call->{arguments};
-            $results = $self->_run_search( $targs->{query}, $targs->{strategy} );
-            my $context = $self->_format_context( $targs->{query}, $results );
-            $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8( $targs->{query} ) . '&semantic=1';
+            my $targs     = $call->{arguments};
+            my $sem_query = $targs->{semantic_query} // $targs->{query};
+            my $kw_query  = $targs->{keyword_query}  // $targs->{query};
+            $results = $self->_run_search( $targs->{strategy}, $sem_query, $kw_query );
+            my $context = $self->_format_context( $sem_query, $results, $query );
+            $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($sem_query) . '&semantic=1';
 
             push @messages, $response->{raw_message};
             push @messages, { role => 'tool', content => $context };
+
         }
         $response = $client->chat_with_tools( \@messages, $system, TOOLS );
     }
@@ -184,18 +202,24 @@ sub converse {
 
 =head2 _run_search
 
-    my $results = $self->_run_search( $query, $strategy );
+    my $results = $self->_run_search( $strategy, $sem_query, $kw_query );
 
 Searches the bibliographic index using the given strategy (C<semantic>,
 C<keyword>, or C<hybrid>) and returns an arrayref of record summary hashrefs
 (see L</_record_summary>). Returns an empty arrayref on error or when no
 results are found. Defaults to C<semantic> if strategy is omitted.
 
+C<$sem_query> is used for the vector/semantic search leg; C<$kw_query> is
+used for the keyword search leg. Each defaults to the other if omitted,
+allowing a single query to serve both when no split is provided.
+
 =cut
 
 sub _run_search {
-    my ( $self, $query, $strategy ) = @_;
-    $strategy //= 'semantic';
+    my ( $self, $strategy, $sem_query, $kw_query ) = @_;
+    $strategy  //= 'semantic';
+    $sem_query //= $kw_query;
+    $kw_query  //= $sem_query;
 
     my $searcher = Koha::SearchEngine::Search->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
     my $fetch_n  = $strategy eq 'hybrid' ? $self->{_top_n} * 2 : $self->{_top_n};
@@ -204,7 +228,7 @@ sub _run_search {
     my @keyword_results;
 
     if ( $strategy eq 'semantic' || $strategy eq 'hybrid' ) {
-        my ( $error, $results_hashref ) = $searcher->semantic_search( $query, $fetch_n, 0 );
+        my ( $error, $results_hashref ) = $searcher->semantic_search( $sem_query, $fetch_n, 0 );
         unless ( $error || !$results_hashref ) {
             my $server  = $results_hashref->{biblioserver};
             my $records = $server ? $server->{RECORDS} : undef;
@@ -219,7 +243,7 @@ sub _run_search {
     }
 
     if ( $strategy eq 'keyword' || $strategy eq 'hybrid' ) {
-        my ( $error, $records ) = $searcher->simple_search_compat( $query, 0, $fetch_n );
+        my ( $error, $records ) = $searcher->simple_search_compat( $kw_query, 0, $fetch_n );
         unless ( $error || !$records ) {
             for my $record (@$records) {
                 next unless $record;
@@ -305,17 +329,21 @@ sub _record_summary {
 
 =head2 _format_context
 
-    my $context = $self->_format_context($query, \@results);
+    my $context = $self->_format_context($search_query, \@results, $original_query);
 
-Formats the search query and result summaries into a human-readable context
-string suitable for inclusion in an LLM prompt. Returns a plain text string.
+Formats the search query, result summaries, and original user query into a
+human-readable context string suitable for inclusion in an LLM prompt.
+C<$original_query> is the raw user message; C<$search_query> is the
+(possibly normalised) term actually sent to the search engine.
+Returns a plain text string.
 
 =cut
 
 sub _format_context {
-    my ( $self, $query, $results ) = @_;
+    my ( $self, $query, $results, $original_query ) = @_;
 
-    my $context = "You searched the library catalogue for: \"$query\"\n\n";
+    my $context =
+        "The user originally asked: \"$original_query\"\n" . "You searched the library catalogue for: \"$query\"\n\n";
 
     if ( !@$results ) {
         $context .= "No results were found for this query. Do not suggest titles from your own knowledge.";
