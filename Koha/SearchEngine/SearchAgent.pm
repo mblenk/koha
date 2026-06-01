@@ -54,7 +54,14 @@ use Koha::SearchEngine::LLMClient;
 use constant TOP_N                       => 5;
 use constant NORMALISATION_HISTORY_TURNS => 3;    # up to 3 user+assistant pairs = 6 messages
 use constant CATALOGUE_PREAMBLE =>
-    "You are a library catalogue assistant. Your role is to help users discover books and materials in the library collection — not to answer their questions directly. When shown catalogue search results, briefly describe the items found and how they relate to the user's topic. If results look relevant, say so. If they seem off-target, suggest how the user might refine their search. Never provide factual answers to questions; instead, point to library resources the user can explore.";
+    "You are a library catalogue assistant. Help users discover items in this specific library's collection.\n"
+    . "STRICT RULE: You may only mention titles, authors, and works that appear in the catalogue search results "
+    . "provided to you in each message. Never name, suggest, or allude to any book, author, or title from your "
+    . "training knowledge — even if you know of highly relevant works. Your knowledge of the outside world does "
+    . "not exist for the purposes of this conversation.\n"
+    . "When results are shown: describe how the found items relate to the user's topic. "
+    . "When no results are found or results seem off-target: say so clearly and suggest how the user might "
+    . "rephrase or broaden their search. Never answer factual questions directly.";
 use constant NORMALISATION_PROMPT =>
     "You are a multilingual library search query normaliser with access to the conversation history shown above.\n"
     . "Your task has two steps:\n"
@@ -125,6 +132,7 @@ sub converse {
     };
 
     my $search_query = $self->_normalise_query( $query, $client, $norm_history );
+warn "Normalised: $search_query";
     my $results      = $self->_run_search($search_query);
     my $context      = $self->_format_context( $query, $results );
 
@@ -150,7 +158,7 @@ sub converse {
         reply        => $reply,
         results      => $results,
         conversation => \@updated_history,
-        search_url   => $self->{_search_url} . '?q=' . uri_escape_utf8($query) . '&semantic=1',
+        search_url   => $self->{_search_url} . '?q=' . uri_escape_utf8($search_query) . '&semantic=1',
     };
 }
 
@@ -277,7 +285,7 @@ sub _format_context {
     my $context = "You searched the library catalogue for: \"$query\"\n\n";
 
     if ( !@$results ) {
-        $context .= "No results were found for this query.";
+        $context .= "No results were found for this query. Do not suggest titles from your own knowledge.";
         return $context;
     }
 
@@ -291,6 +299,8 @@ sub _format_context {
         $context .= "\n";
         $i++;
     }
+
+    $context .= "\nOnly refer to the titles listed above. Do not mention any other titles or authors.";
 
     return $context;
 }

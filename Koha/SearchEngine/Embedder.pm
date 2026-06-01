@@ -403,7 +403,7 @@ sub text_for_biblio {
 
     my @parts;
     for my $field ( @{ $config->{biblio_fields} // [] } ) {
-        my $val = $biblio->can($field) ? $biblio->$field() : undef;
+        my $val = eval { $biblio->$field() };
         push @parts, $val if $val;
     }
 

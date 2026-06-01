@@ -25,7 +25,6 @@ use Koha::BackgroundJobs;
 use Koha::Biblios;
 use Koha::SearchEngine;
 use Koha::SearchEngine::Elasticsearch;
-use Koha::SearchEngine::Embedder;
 
 use base 'Koha::BackgroundJob';
 
@@ -143,6 +142,7 @@ sub process {
 
     $self->start;
 
+    require Koha::SearchEngine::Embedder;
     my $embedder = Koha::SearchEngine::Embedder->new;
     my $es_obj   = Koha::SearchEngine::Elasticsearch->new( { index => $Koha::SearchEngine::BIBLIOS_INDEX } );
     my $es       = $es_obj->get_elasticsearch;
