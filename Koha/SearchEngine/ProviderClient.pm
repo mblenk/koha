@@ -53,7 +53,8 @@ API key is set. Returns the L<HTTP::Response> object.
 
 sub _make_request {
     my ( $self, $body ) = @_;
-    my $req = HTTP::Request->new( POST => $self->{_url} );
+    my $url = _apply_subs( $self->{_url}, { '{{model}}' => $self->{_model} // '' } );
+    my $req = HTTP::Request->new( POST => $url );
     $req->content_type('application/json; charset=UTF-8');
     $req->header( 'Authorization' => 'Bearer ' . $self->{_api_key} )
         if $self->{_auth_type} eq 'bearer' && $self->{_api_key};
