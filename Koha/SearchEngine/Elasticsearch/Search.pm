@@ -695,6 +695,7 @@ sub semantic_search {
     my $vector = Koha::SearchEngine::Embedder->new->embed_query($query_text);
     return ( "Could not generate query embedding", undef, [] ) unless $vector;
 
+    # Handle facet query
     my $inner_query;
     if (@$limits) {
         my $qb = Koha::SearchEngine::QueryBuilder->new( { index => $self->index } );
@@ -738,11 +739,12 @@ sub semantic_search {
     $hits->{total} = $hits->{total}{value}
         if ref $hits->{total} eq 'HASH';
 
-    my ( @records, @scores );
+    my ( @records, @scores, @ids );
     my $i = $offset;
     for my $hit ( @{ $hits->{hits} } ) {
         $records[$i] = $self->decode_record_from_result( $hit->{_source} );
         $scores[$i]  = $hit->{_score};
+        push @ids, $hit->{_id};
         $i++;
     }
 
@@ -759,7 +761,8 @@ sub semantic_search {
                 hits    => $hits->{total},
                 RECORDS => \@records,
                 scores  => \@scores,
-            }
+            },
+            _ids => \@ids,
         },
         $facets,
     );
@@ -826,17 +829,53 @@ sub hybrid_search {
         keys %$scores;
     splice @merged, $results_per_page if @merged > $results_per_page;
 
-    my $facets = $self->_convert_facets( $kw_results ? $kw_results->{aggregations} : undef ) // [];
-    if ( C4::Context->interface eq 'opac' ) {
-        my $rules = C4::Context->yaml_preference('OpacHiddenItems');
-        $facets = Koha::SearchEngine::Search->post_filter_opac_facets( { facets => $facets, rules => $rules } );
-    }
+    my $all_ids = {};
+    $all_ids->{$_} = 1 for @{ ( !$sem_error && $sem_hashref ) ? ( $sem_hashref->{_ids} // [] ) : [] };
+    $all_ids->{ $_->{_id} } = 1 for @{ $kw_results ? ( $kw_results->{hits}{hits} // [] ) : [] };
+
+    my $facets = $self->_facets_for_ids($all_ids);
 
     return (
         undef,
         { biblioserver => { hits => scalar @merged, RECORDS => \@merged, scores => [] } },
         $facets,
     );
+}
+
+=head2 _facets_for_ids
+
+    my $facets = $self->_facets_for_ids( $ids_hashref );
+
+Runs an aggregation-only Elasticsearch query (C<size =E<gt> 0>) over the
+documents identified by the keys of C<$ids_hashref> (the merged result of 
+the keyword and semantic searches) and returns converted Koha facets.
+Returns C<[]> if C<$ids_hashref> is empty or the query fails.
+
+=cut
+
+sub _facets_for_ids {
+    my ( $self, $ids ) = @_;
+    return [] unless %$ids;
+
+    my $agg_query = {
+        query        => { ids => { values => [ keys %$ids ] } },
+        aggregations => $self->_build_facet_aggregations,
+        size         => 0,
+    };
+    my $results = eval {
+        $self->get_elasticsearch->search(
+            index => $self->index_name,
+            body  => $agg_query,
+        );
+    };
+    return [] if $@;
+
+    my $facets = $self->_convert_facets( $results->{aggregations} ) // [];
+    if ( C4::Context->interface eq 'opac' ) {
+        my $rules = C4::Context->yaml_preference('OpacHiddenItems');
+        $facets = Koha::SearchEngine::Search->post_filter_opac_facets( { facets => $facets, rules => $rules } );
+    }
+    return $facets;
 }
 
 1;
