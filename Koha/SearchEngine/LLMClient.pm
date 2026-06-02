@@ -77,9 +77,10 @@ as named arguments (presence of C<url> triggers the test bypass path):
     model                 — model name
     api_key               — bearer token (optional)
     auth_type             — 'none' or 'bearer' (default: 'none')
-    request_body_template — JSON template with {{model}}, {{messages}}, {{system_prompt}}
+    request_body_template — JSON template with {{model}}, {{messages}}, {{system_prompt}}, {{tool_definitions}}
     response_key          — dot-notation path to reply text in the response
     system_prompt         — system prompt text (optional)
+    tool_definitions      — parsed arrayref of tool definitions (optional)
 
 Dies if no active provider is configured and no args are supplied.
 
@@ -89,7 +90,10 @@ sub new {
     my ( $class, $args ) = @_;
     $args //= {};
 
-    my ( $url, $model, $api_key, $auth_type, $request_body_template, $response_key, $system_prompt );
+    my (
+        $url, $model, $api_key, $auth_type, $request_body_template, $response_key, $system_prompt,
+        $tool_definitions
+    );
 
     if ( $args->{url} ) {
         $url                   = $args->{url};
@@ -99,6 +103,7 @@ sub new {
         $request_body_template = $args->{request_body_template} // die "request_body_template required";
         $response_key          = $args->{response_key}          // 'choices.0.message.content';
         $system_prompt         = $args->{system_prompt}         // '';
+        $tool_definitions      = $args->{tool_definitions};
     } else {
         my $record = Koha::LLMProviders->search( { status => 'active' } )->next;
         die "Koha::SearchEngine::LLMClient: No active LLM provider configured"
@@ -114,6 +119,10 @@ sub new {
         $request_body_template = $record->request_body_template;
         $response_key          = $record->response_key;
         $system_prompt         = $record->system_prompt // '';
+        $tool_definitions =
+            $record->tool_definitions
+            ? decode_json( $record->tool_definitions )
+            : undef;
     }
 
     return bless {
@@ -124,6 +133,7 @@ sub new {
         _request_body_template => $request_body_template,
         _response_key          => $response_key,
         _system_prompt         => $system_prompt,
+        _tool_definitions      => $tool_definitions,
         _ua                    => LWP::UserAgent->new( timeout => LWP_TIMEOUT ),
     }, $class;
 }
@@ -231,8 +241,10 @@ sub _handle_chat_with_tools {
 
     my $json = $self->_build_request_body_with_tools( \@messages, $system_prompt, \@tools );
 
-Like C<_build_request_body> but injects the tools array as a top-level key
-before encoding, avoiding a redundant encode/decode cycle.
+Like C<_build_request_body> but also resolves the C<{{tool_definitions}}> sentinel.
+C<\@tools> overrides the provider's stored C<tool_definitions>; pass C<undef> to use
+the stored definitions. When the template has no C<{{tool_definitions}}> sentinel,
+falls back to injecting the tools array as a top-level C<tools> key.
 
 =cut
 
@@ -248,13 +260,19 @@ sub _build_request_body_with_tools {
         ? $messages
         : [ { role => 'system', content => $system_prompt }, @$messages ];
 
-    my %subs = (
+    my $tool_defs = $tools // $self->{_tool_definitions};
+    my %subs      = (
         '{{model}}'         => $self->{_model},
         '{{messages}}'      => $chat_messages,
         '{{system_prompt}}' => $system_prompt,
     );
+    $subs{'{{tool_definitions}}'} = $tool_defs if defined $tool_defs;
     $self->_substitute_sentinels( $structure, \%subs );
-    $structure->{tools} = $tools if $tools && @$tools;
+
+    # Fallback for templates without {{tool_definitions}} sentinel
+    my $has_tools_sentinel = index( $self->{_request_body_template}, '{{tool_definitions}}' ) >= 0;
+    $structure->{tools} = $tool_defs
+        if !$has_tools_sentinel && $tool_defs && @$tool_defs;
     return encode_json($structure);
 }
 

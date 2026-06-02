@@ -125,8 +125,6 @@ export default {
                             preset.request_body_template;
                         resource.response_key = preset.response_key;
                         resource.auth_type = preset.auth_type;
-                        if (preset.suggested_model)
-                            resource.model = preset.suggested_model;
                     },
                 },
                 {

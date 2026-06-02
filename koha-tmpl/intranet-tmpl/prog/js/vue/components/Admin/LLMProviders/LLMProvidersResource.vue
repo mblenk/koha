@@ -70,8 +70,8 @@ export default {
                             preset.request_body_template;
                         resource.response_key = preset.response_key;
                         resource.auth_type = preset.auth_type;
-                        if (preset.suggested_model)
-                            resource.model = preset.suggested_model;
+                        resource.tool_definitions =
+                            preset.tool_definitions ?? null;
                     },
                 },
                 {
@@ -150,6 +150,17 @@ export default {
                     label: $__("Response text path"),
                     toolTip: $__(
                         "Dot-notation path to the reply text in the response — e.g. choices.0.message.content"
+                    ),
+                    disabled: resource =>
+                        !!(resource.preset && resource.preset !== "custom"),
+                    hideIn: ["List", "Show"],
+                },
+                {
+                    name: "tool_definitions",
+                    type: "json",
+                    label: $__("Tool definitions"),
+                    toolTip: $__(
+                        'JSON array of tool definitions in provider-specific format. Substituted via "{{tool_definitions}}" in the request body template. OpenAI uses {"type":"function","function":{...,"parameters":{...}}}; Anthropic uses {"name":...,"input_schema":{...}}.'
                     ),
                     disabled: resource =>
                         !!(resource.preset && resource.preset !== "custom"),

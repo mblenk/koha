@@ -5,7 +5,6 @@ export const EMBEDDING_PROVIDER_PRESETS = [
         url: "https://api.openai.com/v1/embeddings",
         request_body_template: '{"model":"{{model}}","input":"{{text}}"}',
         response_key: "data.0.embedding",
-        suggested_model: "text-embedding-3-small",
         auth_type: "bearer",
     },
     {
@@ -15,7 +14,6 @@ export const EMBEDDING_PROVIDER_PRESETS = [
         request_body_template:
             '{"model":"{{model}}","texts":["{{text}}"],"input_type":"search_document"}',
         response_key: "embeddings.0",
-        suggested_model: "embed-english-v3.0",
         auth_type: "bearer",
     },
     {
@@ -24,7 +22,6 @@ export const EMBEDDING_PROVIDER_PRESETS = [
         url: "http://localhost:11434/api/embed",
         request_body_template: '{"model":"{{model}}","input":"{{text}}"}',
         response_key: "embeddings.0",
-        suggested_model: "nomic-embed-text",
         auth_type: "none",
     },
     {
@@ -33,7 +30,6 @@ export const EMBEDDING_PROVIDER_PRESETS = [
         url: "https://api-inference.huggingface.co/pipeline/feature-extraction/{{model}}",
         request_body_template: '{"inputs":"{{text}}"}',
         response_key: "0",
-        suggested_model: "sentence-transformers/all-MiniLM-L6-v2",
         auth_type: "bearer",
     },
     { id: "custom", label: "Custom" },

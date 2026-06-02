@@ -26,11 +26,16 @@ properties:
       - none
       - bearer
   request_body_template:
-    description: JSON body template with {{model}}, {{messages}}, and {{system_prompt}} as sentinel values
+    description: JSON body template with {{model}}, {{messages}}, {{system_prompt}}, and {{tool_definitions}} as sentinel values
     type: string
   response_key:
     description: Dot-notation path to the reply text in the response (e.g. choices.0.message.content)
     type: string
+  tool_definitions:
+    description: JSON array of tool definitions in provider-specific format; substituted via {{tool_definitions}} sentinel in the request body template
+    type:
+      - string
+      - "null"
   system_prompt:
     description: System prompt injected at the start of every conversation
     type:

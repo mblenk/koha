@@ -76,7 +76,7 @@ Whether to send an Authorization header
   data_type: 'text'
   is_nullable: 0
 
-JSON body template with {{model}}, {{messages}}, and {{system_prompt}} as sentinel values
+JSON body template with {{model}}, {{messages}}, {{system_prompt}}, and {{tool_definitions}} as sentinel values
 
 =head2 response_key
 
@@ -86,6 +86,13 @@ JSON body template with {{model}}, {{messages}}, and {{system_prompt}} as sentin
   size: 255
 
 Dot-notation path to the reply text in the response
+
+=head2 tool_definitions
+
+  data_type: 'text'
+  is_nullable: 1
+
+JSON array of tool definitions in provider-specific format; substituted via {{tool_definitions}} sentinel in the request body template
 
 =head2 system_prompt
 
@@ -132,6 +139,8 @@ __PACKAGE__->add_columns(
     is_nullable => 0,
     size => 255,
   },
+  "tool_definitions",
+  { data_type => "text", is_nullable => 1 },
   "system_prompt",
   { data_type => "text", is_nullable => 1 },
   "status",
@@ -170,8 +179,8 @@ __PACKAGE__->set_primary_key("llm_provider_id");
 __PACKAGE__->add_unique_constraint("name", ["name"]);
 
 
-# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-05-25 12:59:13
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:Um2mbOWffOzrfq/0f6JZEg
+# Created by DBIx::Class::Schema::Loader v0.07051 @ 2026-06-02 10:35:51
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:adiGSu6/n16elJJHrD/90Q
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

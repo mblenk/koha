@@ -62,48 +62,6 @@ use constant CATALOGUE_PREAMBLE =>
     . "When results are shown: describe how the found items relate to the user's topic. "
     . "When no results are found or results seem off-target: say so clearly and suggest how the user might "
     . "rephrase or broaden their search. Never answer factual questions directly.";
-use constant TOOLS => [
-    {
-        type     => 'function',
-        function => {
-            name        => 'search_catalogue',
-            description => 'Search the library catalogue for books and materials. '
-                . 'Always call this before responding to the user.',
-            parameters => {
-                type       => 'object',
-                properties => {
-                    query => {
-                        type        => 'string',
-                        description => 'Primary search phrase — used as fallback for both searches '
-                            . 'when semantic_query or keyword_query are not provided.',
-                    },
-                    semantic_query => {
-                        type        => 'string',
-                        description => 'Optimised for vector/semantic search. A descriptive phrase '
-                            . '(2-5 words) capturing the topic and context '
-                            . '(e.g. "Tudor dynasty English monarchy").',
-                    },
-                    keyword_query => {
-                        type        => 'string',
-                        description => 'Optimised for keyword search. The single most distinctive word '
-                            . 'or at most two words — shorter is better because keyword search '
-                            . 'requires ALL words to appear in a record '
-                            . '(e.g. "Tudor" not "Tudor dynasty").',
-                    },
-                    strategy => {
-                        type        => 'string',
-                        enum        => [ 'semantic', 'keyword', 'hybrid' ],
-                        description => 'hybrid: use for most searches; provide semantic_query and '
-                            . 'keyword_query separately for best results; '
-                            . 'semantic: vague or abstract concepts only; '
-                            . 'keyword: known exact titles, ISBNs, or precise author names.',
-                    },
-                },
-                required => [ 'query', 'strategy' ],
-            },
-        },
-    }
-];
 
 =head1 METHODS
 
@@ -164,7 +122,7 @@ sub converse {
     my $search_url = $self->{_search_url} . '?q=' . uri_escape_utf8($query);
 
     my $iterations = 0;
-    my $response   = $client->chat_with_tools( \@messages, $system, TOOLS );
+    my $response   = $client->chat_with_tools( \@messages, $system );
 
     while ( $response && $response->{type} eq 'tool_call' && $iterations++ < 3 ) {
         for my $call ( @{ $response->{tool_calls} } ) {
@@ -186,7 +144,7 @@ sub converse {
             push @messages, { role => 'tool', content => $context };
 
         }
-        $response = $client->chat_with_tools( \@messages, $system, TOOLS );
+        $response = $client->chat_with_tools( \@messages, $system );
     }
 
     return undef unless $response && $response->{type} eq 'text';
